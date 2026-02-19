@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora Pro SEC | Normativa RIC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col dark:bg-slate-900 dark:text-slate-300 transition-colors duration-300">
+
+    <!-- Header -->
+    <header class="bg-sec-blue text-white shadow-lg sticky top-0 z-20">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-bolt text-sec-accent text-2xl"></i>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide">Calculadora Pro SEC</h1>
+                    <p class="text-xs text-slate-400">Herramientas de Ingeniería Eléctrica</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <!-- Dark Mode Toggle -->
+                <label for="dark-mode-toggle" class="flex items-center cursor-pointer">
+                    <div class="relative">
+                        <input type="checkbox" id="dark-mode-toggle" class="sr-only">
+                        <div class="block bg-slate-600 w-14 h-8 rounded-full"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition"></div>
+                    </div>
+                    <div class="ml-3 text-white font-medium hidden sm:block">
+                        <i class="fa-solid fa-moon"></i>
+                    </div>
+                </label>
+                <div class="hidden md:flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span class="text-xs font-medium text-slate-300">Normativa RIC Actualizada</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Dashboard -->
+    <nav class="bg-white shadow-sm sticky top-[80px] md:top-[76px] z-10 dark:bg-slate-800">
+        <div class="container mx-auto px-4">
+            <div class="flex space-x-1 sm:space-x-6 overflow-x-auto">
+                <button onclick="switchTab('feeder')" id="btn-feeder" class="tab-active py-4 px-2 focus:outline-none transition-colors whitespace-nowrap">
+                    <i class="fa-solid fa-calculator mr-2"></i>Alimentadores
+                </button>
+                <button onclick="switchTab('conduit')" id="btn-conduit" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
+                    <i class="fa-solid fa-circle-notch mr-2"></i>Ocupación Ductos
+                </button>
+                <button onclick="switchTab('loads')" id="btn-loads" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
+                    <i class="fa-solid fa-table-list mr-2"></i>Cuadro de Cargas
+                </button>
+                <button onclick="switchTab('grounding')" id="btn-grounding" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
+                    <i class="fa-solid fa-earth-americas mr-2"></i>Puesta a Tierra
+                </button>
+                <button onclick="switchTab('guide')" id="btn-guide" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
+                    <i class="fa-solid fa-book-open mr-2"></i>Guía Rápida
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8 flex-grow">
+        
+        <!-- Tool 1: Cálculo de Alimentadores -->
+        <section id="tab-feeder" class="fade-in space-y-6">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <h2 class="text-lg font-bold text-sec-blue mb-4 border-b pb-2 dark:text-white dark:border-slate-600">Cálculo de Sección y Caída de Tensión</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Inputs -->
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Potencia (Watts)</label>
+                            <input type="number" id="f-power" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400" placeholder="Ej: 5000">
+                            <p id="f-power-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Tensión</label>
+                                <select id="f-voltage" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                    <option value="220">220V (Monofásico)</option>
+                                    <option value="380">380V (Trifásico)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Factor de Potencia</label>
+                                <input type="number" id="f-fp" value="0.93" step="0.01" max="1" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                <p id="f-fp-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Longitud (metros)</label>
+                            <input type="number" id="f-length" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400" placeholder="Ej: 25">
+                            <p id="f-length-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Temp. Ambiente</label>
+                                <select id="f-temp" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                    <option value="1.00">26-30 °C</option>
+                                    <option value="0.94">31-35 °C</option>
+                                    <option value="0.87">36-40 °C</option>
+                                    <option value="0.79">41-45 °C</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">N° Conductores</label>
+                                <select id="f-group" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                    <option value="1.00">1-3</option>
+                                    <option value="0.80">4-6</option>
+                                    <option value="0.70">7-9</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button onclick="calculateFeeder()" class="w-full bg-sec-blue hover:bg-slate-800 text-white font-bold py-2 px-4 rounded transition">
+                            Calcular
+                        </button>
+                    </div>
+
+                    <!-- Results -->
+                    <div class="bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col justify-center dark:bg-slate-900/50 dark:border-slate-700">
+                        <div id="f-result-placeholder" class="text-center text-slate-400 dark:text-slate-500">
+                            <i class="fa-solid fa-chart-line text-4xl mb-2"></i>
+                            <p>Ingrese los datos para ver los resultados</p>
+                        </div>
+                        <div id="f-result-content" class="hidden space-y-4">
+                            <div class="flex justify-between items-center border-b pb-2 dark:border-slate-600">
+                                <span class="text-slate-600 dark:text-slate-400">Corriente Nominal:</span>
+                                <span class="font-mono font-bold text-lg dark:text-white" id="res-current">0 A</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs border-b pb-2 dark:border-slate-700">
+                                <span class="text-slate-500 dark:text-slate-400">Factor Temp. (fT):</span>
+                                <span class="font-mono font-bold" id="res-factor-t">1.00</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs border-b pb-2 dark:border-slate-700">
+                                <span class="text-slate-500 dark:text-slate-400">Factor Agrup. (fG):</span>
+                                <span class="font-mono font-bold" id="res-factor-g">1.00</span>
+                            </div>
+                            <div class="flex justify-between items-center border-b pb-2 dark:border-slate-600">
+                                <span class="text-slate-600 dark:text-slate-400">Sección Sugerida (Cu):</span>
+                                <span class="font-mono font-bold text-lg text-sec-blue dark:text-sec-accent" id="res-section">0 mm²</span>
+                            </div>
+                            <div class="flex justify-between items-center border-b pb-2 dark:border-slate-600">
+                                <span class="text-slate-600 dark:text-slate-400">Caída de Tensión (V):</span>
+                                <span class="font-mono font-bold dark:text-white" id="res-drop-v">0 V</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-600 dark:text-slate-400">Porcentaje Caída:</span>
+                                <span class="font-mono font-bold text-lg dark:text-white" id="res-drop-p">0 %</span>
+                            </div>
+                            <div id="res-status" class="mt-4 p-3 rounded text-center font-bold text-sm">
+                                <!-- Status Message -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 2: Ocupación de Ductos -->
+        <section id="tab-conduit" class="hidden fade-in space-y-6">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <h2 class="text-lg font-bold text-sec-blue mb-4 border-b pb-2 dark:text-white dark:border-slate-600">Verificación de Ocupación de Ductos (RIC N°04)</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Diámetro del Ducto (mm)</label>
+                            <select id="c-duct-size" oninput="calculateConduit()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                <option value="16">16 mm</option>
+                                <option value="20">20 mm</option>
+                                <option value="25">25 mm</option>
+                                <option value="32">32 mm</option>
+                                <option value="40">40 mm</option>
+                                <option value="50">50 mm</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Sección Conductor</label>
+                                <select id="c-wire-size" oninput="calculateConduit()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                    <option value="1.5">1.5 mm²</option>
+                                    <option value="2.5">2.5 mm²</option>
+                                    <option value="4">4 mm²</option>
+                                    <option value="6">6 mm²</option>
+                                    <option value="10">10 mm²</option>
+                                    <option value="16">16 mm²</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Cantidad</label>
+                                <input type="number" id="c-wire-qty" value="3" min="1" oninput="calculateConduit()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                            </div>
+                        </div>
+                        <button onclick="calculateConduit()" class="w-full bg-sec-blue hover:bg-slate-800 text-white font-bold py-2 px-4 rounded transition">
+                            Verificar Ocupación
+                        </button>
+                    </div>
+
+                    <div class="bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col justify-center items-center text-center dark:bg-slate-900/50 dark:border-slate-700">
+                        <div id="c-result-circle" class="w-32 h-32 rounded-full border-8 border-slate-200 flex items-center justify-center mb-4 transition-all duration-500 relative dark:border-slate-700">
+                            <span id="c-result-percent" class="text-2xl font-bold text-slate-700 dark:text-slate-300">0%</span>
+                        </div>
+                        <p id="c-result-text" class="font-medium text-slate-600 dark:text-slate-400">Máximo permitido: 40%</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 3: Cuadro de Cargas -->
+        <section id="tab-loads" class="hidden fade-in space-y-6">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <div class="flex justify-between items-center mb-4 border-b pb-2 dark:border-slate-600">
+                    <h2 class="text-lg font-bold text-sec-blue dark:text-white">Cuadro de Cargas Dinámico</h2>
+                    <span class="text-sm bg-slate-100 px-2 py-1 rounded text-slate-500">Totalizador Automático</span>
+                </div>
+                
+                <!-- Add Row Form -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6 bg-slate-50 p-4 rounded-lg items-start dark:bg-slate-900/50">
+                    <div class="lg:col-span-1">
+                        <input type="text" id="l-name" placeholder="Nombre Circuito (Ej: C1 Alumbrado)" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400">
+                        <p id="l-name-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                    </div>
+                    <div class="lg:col-span-1">
+                        <input type="number" id="l-power" oninput="suggestProtection()" placeholder="Potencia (W)" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400">
+                        <p id="l-power-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                    </div>
+                    <div class="lg:col-span-1">
+                        <select id="l-wire-section" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                            <option value="1.5">Cable 1.5 mm²</option>
+                            <option value="2.5">Cable 2.5 mm²</option>
+                            <option value="4.0">Cable 4.0 mm²</option>
+                            <option value="6.0">Cable 6.0 mm²</option>
+                        </select>
+                        <p id="l-wire-section-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                    </div>
+                    <div class="lg:col-span-1">
+                        <input type="text" id="l-protection" placeholder="Protección Sugerida" readonly class="p-2 border rounded w-full bg-slate-100 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400 cursor-not-allowed">
+                        <p id="l-protection-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                    </div>
+                    <button onclick="addLoadRow()" class="bg-sec-accent hover:bg-sky-600 text-white font-bold py-2 px-4 rounded transition w-full lg:col-span-1">
+                        <i class="fa-solid fa-plus mr-1"></i> Agregar
+                    </button>
+                </div>
+
+                <!-- Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-800 text-white text-sm uppercase dark:bg-slate-900">
+                                <th class="p-3 rounded-tl-lg">Circuito</th>
+                                <th class="p-3">Potencia (W)</th>
+                                <th class="p-3">Sección Cable</th>
+                                <th class="p-3">Protección</th>
+                                <th class="p-3 rounded-tr-lg text-center">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="load-table-body" class="text-sm text-slate-700 dark:text-slate-300">
+                            <!-- Rows will be added here -->
+                        </tbody>
+                        <tfoot>
+                            <tr class="bg-slate-100 font-medium border-t-2 border-slate-300 dark:bg-slate-800 dark:border-slate-700">
+                                <td class="p-3 text-right">TOTAL INSTALADO:</td>
+                                <td class="p-3 text-slate-700 dark:text-slate-300" id="l-total-power">0 W</td>
+                                <td colspan="3"></td>
+                            </tr>
+                            <tr class="bg-slate-200 font-bold dark:bg-slate-900">
+                                <td class="p-3 text-right">POTENCIA DEMANDADA:</td>
+                                <td class="p-3 text-sec-blue text-lg dark:text-sec-accent" id="l-demanded-power">0 W</td>
+                                <td colspan="3" class="p-3">
+                                    <div class="flex flex-col sm:flex-row items-center justify-end gap-2">
+                                        <span class="text-xs font-normal text-slate-500">(Factor de Demanda Aplicado)</span>
+                                        <button onclick="useDemandedPowerForFeeder()" title="Usar esta potencia en la calculadora de alimentadores" class="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1 px-3 rounded transition flex items-center gap-2 w-full sm:w-auto">
+                                        <i class="fa-solid fa-arrow-right-to-bracket"></i> Usar
+                                    </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 4: Puesta a Tierra -->
+        <section id="tab-grounding" class="hidden fade-in space-y-6">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <h2 class="text-lg font-bold text-sec-blue mb-4 border-b pb-2 dark:text-white dark:border-slate-600">Cálculo de Resistencia de Puesta a Tierra (RIC N°06)</h2>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Cálculo para un electrodo vertical (barra) según fórmula de Dwight.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Inputs -->
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Resistividad del Terreno (ρ) en Ω.m</label>
+                            <input type="number" id="g-resistivity" oninput="calculateGrounding()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400" placeholder="Ej: 100">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Longitud del Electrodo (L) en metros</label>
+                            <input type="number" id="g-length" value="2.5" oninput="calculateGrounding()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400" placeholder="Ej: 2.5">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Diámetro del Electrodo (d) en mm</label>
+                            <input type="number" id="g-diameter" value="16" oninput="calculateGrounding()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400" placeholder="Ej: 16 (para 5/8&quot;)">
+                        </div>
+                        <button onclick="calculateGrounding()" class="w-full bg-sec-blue hover:bg-slate-800 text-white font-bold py-2 px-4 rounded transition">
+                            Calcular Resistencia
+                        </button>
+                    </div>
+
+                    <!-- Results -->
+                    <div class="bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col justify-center items-center text-center dark:bg-slate-900/50 dark:border-slate-700">
+                        <div id="g-result-placeholder" class="text-center text-slate-400 dark:text-slate-500">
+                            <i class="fa-solid fa-plug-circle-bolt text-4xl mb-2"></i>
+                            <p>Ingrese los datos para calcular la resistencia</p>
+                        </div>
+                        <div id="g-result-content" class="hidden">
+                            <p class="text-slate-600 dark:text-slate-400">Resistencia Estimada:</p>
+                            <p class="font-mono font-bold text-4xl my-2 dark:text-white" id="res-grounding">0 Ω</p>
+                            <div id="g-res-status" class="mt-4 p-3 rounded text-center font-bold text-sm">
+                                <!-- Status Message -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 5: Guía Rápida Normativa -->
+        <section id="tab-guide" class="hidden fade-in space-y-6">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <h2 class="text-lg font-bold text-sec-blue mb-4 border-b pb-2 dark:text-white dark:border-slate-600">Biblioteca Normativa (Guía Rápida)</h2>
+                
+                <!-- Código de Colores -->
+                <div class="mb-8">
+                    <h3 class="text-md font-bold text-slate-700 dark:text-slate-300 mb-2">Código de Colores de Conductores (RIC N°04)</h3>
+                    <div class="guide-table-container">
+                        <table class="guide-table">
+                            <thead>
+                                <tr>
+                                    <th>Función</th>
+                                    <th>Color</th>
+                                    <th>Descripción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Fase 1 (R)</td>
+                                    <td class="font-bold text-blue-600">Azul</td>
+                                    <td>Para sistemas monofásicos y primera fase en trifásicos.</td>
+                                </tr>
+                                <tr>
+                                    <td>Fase 2 (S)</td>
+                                    <td class="font-bold text-black dark:text-gray-300">Negro</td>
+                                    <td>Segunda fase en sistemas trifásicos.</td>
+                                </tr>
+                                <tr>
+                                    <td>Fase 3 (T)</td>
+                                    <td class="font-bold text-red-600">Rojo</td>
+                                    <td>Tercera fase en sistemas trifásicos.</td>
+                                </tr>
+                                <tr>
+                                    <td>Neutro</td>
+                                    <td class="font-bold text-white bg-slate-400">Blanco</td>
+                                    <td>Conductor de retorno de corriente.</td>
+                                </tr>
+                                <tr>
+                                    <td>Tierra de Protección</td>
+                                    <td class="font-bold text-green-600">Verde o Verde/Amarillo</td>
+                                    <td>Conductor de seguridad.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Alturas de Montaje -->
+                <div class="mb-8">
+                    <h3 class="text-md font-bold text-slate-700 dark:text-slate-300 mb-2">Alturas de Montaje Sugeridas (RIC N°05)</h3>
+                    <ul class="list-disc list-inside space-y-2 text-slate-600 dark:text-slate-400">
+                        <li><strong>Interruptores:</strong> 0.90 m a 1.20 m desde el nivel de piso terminado (NPT).</li>
+                        <li><strong>Enchufes de uso general:</strong> 0.20 m a 0.30 m desde el NPT.</li>
+                        <li><strong>Enchufes sobre muebles (cocina, escritorios):</strong> 1.10 m a 1.20 m desde el NPT.</li>
+                        <li><strong>Tablero de distribución:</strong> Borde inferior a 1.40 m, borde superior a 2.00 m desde el NPT.</li>
+                        <li><strong>Apliqués (muro):</strong> 1.80 m a 2.00 m desde el NPT.</li>
+                    </ul>
+                </div>
+
+                <!-- Zonas de Seguridad en Baños -->
+                <div>
+                    <h3 class="text-md font-bold text-slate-700 dark:text-slate-300 mb-2">Volúmenes de Seguridad en Baños (RIC N°07)</h3>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">Define las zonas donde se restringe o prohíbe la instalación de equipos eléctricos.</p>
+                    <ul class="list-disc list-inside space-y-2 text-slate-600 dark:text-slate-400">
+                        <li><strong>Volumen 0:</strong> Interior de la bañera o receptáculo de ducha. No se permite ningún equipo eléctrico.</li>
+                        <li><strong>Volumen 1:</strong> Área vertical sobre la bañera/ducha hasta 2.25 m de altura. Solo equipos de muy baja tensión de seguridad (12V).</li>
+                        <li><strong>Volumen 2:</strong> 0.60 m alrededor del Volumen 1 y hasta 2.25 m de altura. Se permiten luminarias y extractores con protección IPX4 o superior.</li>
+                        <li><strong>Volumen 3:</strong> 2.40 m desde el Volumen 2 y hasta 2.25 m de altura. Se permiten enchufes si están protegidos por un diferencial.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer / Export -->
+    <footer class="bg-white border-t mt-auto py-6 dark:bg-slate-800 dark:border-slate-700">
+        <div class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p class="text-sm text-slate-500 dark:text-slate-400">© 2024 Calculadora Pro SEC - Desarrollado para cumplimiento RIC.</p>
+            <button onclick="exportPDF()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded shadow-lg flex items-center gap-2 transition transform hover:scale-105">
+                <i class="fa-solid fa-file-pdf"></i>
+                Generar Memoria de Cálculo
+            </button>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="scripts.js"></script>
+</body>
+</html>

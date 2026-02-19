@@ -1,0 +1,651 @@
+tailwind.config = {
+    darkMode: 'class',
+    theme: {
+        extend: {
+            colors: {
+                sec: {
+                    blue: '#0f172a', // Slate 900
+                    accent: '#0ea5e9', // Sky 500
+                    danger: '#ef4444',
+                    success: '#22c55e',
+                    warning: '#eab308'
+                }
+            }
+        }
+    }
+}
+
+// --- Dark Mode Logic ---
+document.addEventListener('DOMContentLoaded', () => {
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    const htmlEl = document.documentElement;
+
+    // On page load, check for saved preference or system preference
+    if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        htmlEl.classList.add('dark');
+        if(darkModeToggle) darkModeToggle.checked = true;
+    } else {
+        htmlEl.classList.remove('dark');
+        if(darkModeToggle) darkModeToggle.checked = false;
+    }
+
+    // Listener for the toggle
+    darkModeToggle?.addEventListener('change', () => {
+        if (darkModeToggle.checked) {
+            htmlEl.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            htmlEl.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+        }
+    });
+
+    loadState();
+});
+
+// --- Navigation Logic ---
+function switchTab(tabId) {
+    // Hide all sections
+    ['feeder', 'conduit', 'loads', 'grounding', 'guide'].forEach(id => {
+        document.getElementById(`tab-${id}`).classList.add('hidden');
+        const btn = document.getElementById(`btn-${id}`);
+        if (btn) {
+            btn.classList.remove('tab-active');
+            btn.classList.add('tab-inactive');
+        }
+    });
+
+    // Show selected
+    document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+    const activeBtn = document.getElementById(`btn-${tabId}`);
+    activeBtn.classList.remove('tab-inactive');
+    activeBtn.classList.add('tab-active');
+    saveState();
+}
+
+// --- Tool 1: Feeder Logic ---
+// Datos de ampacidad según RIC N°04, Tabla 4.4.
+// Método B1: Conductores unipolares en ducto sobrepuesto o embutido.
+// (Para 3 conductores activos, aislación 70°C, temp. ambiente 30°C)
+const wireData = [
+    { section: 1.5, amp: 13.5 },
+    { section: 2.5, amp: 18 },
+    { section: 4.0, amp: 24 },
+    { section: 6.0, amp: 31 },
+    { section: 10.0, amp: 42 },
+    { section: 16.0, amp: 56 },
+    { section: 25.0, amp: 73 },
+    { section: 35.0, amp: 89 },
+    { section: 50.0, amp: 108 }
+];
+
+function calculateFeeder() {
+    // --- 1. Clear previous errors ---
+    const fieldsToValidate = ['f-power', 'f-length', 'f-fp'];
+    fieldsToValidate.forEach(id => {
+        document.getElementById(id).classList.remove('border-red-500');
+        const errorEl = document.getElementById(`${id}-error`);
+        if (errorEl) errorEl.classList.add('hidden');
+    });
+
+    // --- 2. Get values and validate ---
+    let isValid = true;
+    const P_input = document.getElementById('f-power');
+    const L_input = document.getElementById('f-length');
+    const FP_input = document.getElementById('f-fp');
+
+    const P = parseFloat(P_input.value);
+    const V = parseFloat(document.getElementById('f-voltage').value);
+    const L = parseFloat(L_input.value);
+    const FP = parseFloat(FP_input.value);
+    const fT = parseFloat(document.getElementById('f-temp').value);
+    const fG = parseFloat(document.getElementById('f-group').value);
+
+    const displayError = (id, message) => {
+        document.getElementById(id).classList.add('border-red-500');
+        const errorEl = document.getElementById(`${id}-error`);
+        errorEl.innerText = message;
+        errorEl.classList.remove('hidden');
+        isValid = false;
+    };
+
+    if (!P_input.value || P <= 0) displayError('f-power', 'Potencia debe ser un número positivo.');
+    if (!L_input.value || L <= 0) displayError('f-length', 'Longitud debe ser un número positivo.');
+    if (!FP_input.value || FP <= 0 || FP > 1) displayError('f-fp', 'FP debe estar entre 0.01 y 1.');
+
+    if (!isValid) return;
+
+    // 3. Calculate Current (I)
+    let I = 0;
+    if (V === 220) {
+        I = P / (V * FP);
+    } else {
+        I = P / (Math.sqrt(3) * V * FP);
+    }
+
+    // Corregir la corriente necesaria por los factores de ajuste.
+    const I_corregida = I / (fT * fG);
+
+    // 4. Find Minimum Section by Ampacity
+    let selectedWire = wireData.find(w => w.amp >= I_corregida);
+    if (!selectedWire) selectedWire = wireData[wireData.length - 1]; // Max out or handle error
+
+    // 5. Check Voltage Drop and Upsize if needed
+    // Formula: Vp = K * I * L * Rho / S
+    // Rho Copper = 0.018
+    // K = 2 (1-ph), 1.73 (3-ph)
+    const rho = 0.018;
+    const K = (V === 220) ? 2 : 1.732;
+    
+    let finalSection = selectedWire.section;
+    let vDrop = 0;
+    let pDrop = 0;
+
+    // Iteratively increase section until drop < 3% or max wire reached
+    for (let i = wireData.indexOf(selectedWire); i < wireData.length; i++) {
+        finalSection = wireData[i].section;
+        vDrop = (K * I * L * rho) / finalSection;
+        pDrop = (vDrop / V) * 100;
+
+        if (pDrop <= 3.0) break;
+    }
+
+    // 6. Render Results
+    document.getElementById('f-result-placeholder').classList.add('hidden');
+    document.getElementById('f-result-content').classList.remove('hidden');
+
+    document.getElementById('res-current').innerText = I.toFixed(2) + " A";
+    document.getElementById('res-factor-t').innerText = fT.toFixed(2);
+    document.getElementById('res-factor-g').innerText = fG.toFixed(2);
+    document.getElementById('res-section').innerText = finalSection + " mm²";
+    document.getElementById('res-drop-v').innerText = vDrop.toFixed(2) + " V";
+    document.getElementById('res-drop-p').innerText = pDrop.toFixed(2) + " %";
+
+    const statusDiv = document.getElementById('res-status');
+    if (pDrop > 3.0) {
+        statusDiv.className = "mt-4 p-3 rounded text-center font-bold text-sm bg-red-100 text-red-700 border border-red-300";
+        statusDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-2"></i>FUERA DE NORMA (>3%)<br>Aumente sección manualmente si es necesario.`;
+    } else {
+        statusDiv.className = "mt-4 p-3 rounded text-center font-bold text-sm bg-green-100 text-green-700 border border-green-300";
+        statusDiv.innerHTML = `<i class="fa-solid fa-check-circle mr-2"></i>CUMPLE NORMATIVA RIC`;
+    }
+
+    saveState();
+}
+
+// --- Tool 2: Conduit Logic ---
+// Áreas externas de cables tipo EVA/RZ1-K según diámetros típicos de mercado.
+// El área (en mm²) se calcula como PI * (diametro/2)^2
+const wireAreas = {
+    "1.5": 7.07,  // Diámetro aprox. 3.0 mm
+    "2.5": 9.62,  // Diámetro aprox. 3.5 mm
+    "4": 13.20, // Diámetro aprox. 4.1 mm
+    "6": 17.35, // Diámetro aprox. 4.7 mm
+    "10": 28.27, // Diámetro aprox. 6.0 mm
+    "16": 40.72  // Diámetro aprox. 7.2 mm
+};
+
+// Approx internal area of conduits (Class IV PVC)
+const conduitAreas = {
+    "16": 153, // ~14mm ID
+    "20": 254, // ~18mm ID
+    "25": 415, // ~23mm ID
+    "32": 660,
+    "40": 1017,
+    "50": 1590
+};
+
+function calculateConduit() {
+    const ductSize = document.getElementById('c-duct-size').value;
+    const wireSize = document.getElementById('c-wire-size').value;
+    const qty = parseInt(document.getElementById('c-wire-qty').value);
+
+    const totalWireArea = wireAreas[wireSize] * qty;
+    const ductArea = conduitAreas[ductSize];
+    
+    const occupation = (totalWireArea / ductArea) * 100;
+
+    const circle = document.getElementById('c-result-circle');
+    const text = document.getElementById('c-result-percent');
+    const msg = document.getElementById('c-result-text');
+
+    text.innerText = occupation.toFixed(1) + "%";
+
+    if (occupation > 40) {
+        circle.className = "w-32 h-32 rounded-full border-8 border-red-500 flex items-center justify-center mb-4 transition-all duration-500 bg-red-50";
+        text.className = "text-2xl font-bold text-red-600";
+        msg.innerHTML = `<span class="text-red-600 font-bold"><i class="fa-solid fa-xmark"></i> Rechazado (Max 40%)</span>`;
+    } else {
+        circle.className = "w-32 h-32 rounded-full border-8 border-green-500 flex items-center justify-center mb-4 transition-all duration-500 bg-green-50";
+        text.className = "text-2xl font-bold text-green-600";
+        msg.innerHTML = `<span class="text-green-600 font-bold"><i class="fa-solid fa-check"></i> Aprobado</span>`;
+    }
+
+    saveState();
+}
+
+// --- Tool 3: Load Schedule Logic ---
+let totalWatts = 0;
+
+function suggestProtection() {
+    const powerInput = document.getElementById('l-power');
+    const protectionInput = document.getElementById('l-protection');
+    const power = parseFloat(powerInput.value);
+
+    if (isNaN(power) || power <= 0) {
+        protectionInput.value = '';
+        return;
+    }
+
+    // Asume 220V para circuitos de consumo general (Alumbrado/Enchufes)
+    const current = power / 220;
+
+    // Capacidades normalizadas de disyuntores
+    const breakerSizes = [6, 10, 16, 20, 25, 32, 40];
+    let suggestedBreaker = breakerSizes[breakerSizes.length - 1]; // Por defecto el máximo si la corriente es muy alta
+
+    for (const size of breakerSizes) {
+        // El disyuntor debe ser mayor o igual a la corriente del circuito
+        if (size >= current) {
+            suggestedBreaker = size;
+            break;
+        }
+    }
+    
+    // Formato para monofásico
+    protectionInput.value = `1x${suggestedBreaker}A`;
+}
+
+function addLoadRow() {
+    // --- 1. Clear previous errors ---
+    const fieldsToValidate = ['l-name', 'l-power', 'l-protection', 'l-wire-section'];
+    fieldsToValidate.forEach(id => {
+        document.getElementById(id).classList.remove('border-red-500');
+        document.getElementById(`${id}-error`).classList.add('hidden');
+    });
+
+    // --- 2. Get values and validate ---
+    let isValid = true;
+    const nameInput = document.getElementById('l-name');
+    const powerInput = document.getElementById('l-power');
+    const protectionInput = document.getElementById('l-protection');
+    const wireSectionInput = document.getElementById('l-wire-section');
+
+    const name = nameInput.value.trim();
+    const power = parseFloat(powerInput.value);
+    const protection = protectionInput.value.trim();
+    const wireSection = parseFloat(wireSectionInput.value);
+
+    const displayError = (id, message) => {
+        document.getElementById(id).classList.add('border-red-500');
+        const errorEl = document.getElementById(`${id}-error`);
+        errorEl.innerText = message;
+        errorEl.classList.remove('hidden');
+        isValid = false;
+    };
+
+    if (!name) displayError('l-name', 'Ingrese un nombre para el circuito.');
+    if (!powerInput.value || isNaN(power) || power <= 0) displayError('l-power', 'Ingrese una potencia válida y positiva.');
+    if (!protection) displayError('l-protection', 'Protección no sugerida. Ingrese una potencia válida.');
+
+    // --- 3. Ampacity Validation (Coordination Check) ---
+    let isSafe = true;
+    if (isValid && protection && wireSection) {
+        const breakerRating = parseFloat(protection.split('x')[1]);
+        const wireInfo = wireData.find(w => w.section === wireSection);
+        const maxWireAmps = wireInfo ? wireInfo.amp : 0;
+
+        if (breakerRating > maxWireAmps) {
+            displayError('l-wire-section', `¡Riesgo! Protección de ${breakerRating}A es muy alta para cable de ${wireSection}mm² (Máx: ${maxWireAmps}A).`);
+            isSafe = false;
+        }
+    }
+
+    if (!isValid || !isSafe) return;
+    
+    const tbody = document.getElementById('load-table-body');
+    const row = document.createElement('tr');
+    row.className = "border-b hover:bg-slate-50 transition dark:border-slate-700 dark:hover:bg-slate-700/50";
+    row.innerHTML = `
+                <td class="p-3 font-medium">${name}</td>
+                <td class="p-3">${power} W</td>
+                <td class="p-3">${wireSection.toFixed(1)} mm²</td>
+                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300">${protection}</span></td>
+                <td class="p-3 text-center">
+                    <button onclick="removeRow(this, ${power})" class="text-red-500 hover:text-red-700">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+    tbody.appendChild(row);
+
+    // --- 3. Update Total ---
+    totalWatts += power;
+    updateTotalDisplay();
+
+    // --- 4. Clear inputs ---
+    nameInput.value = "";
+    powerInput.value = "";
+    protectionInput.value = "";
+    wireSectionInput.value = "1.5";
+    saveState();
+}
+
+function removeRow(btn, power) {
+    const row = btn.closest('tr');
+    row.remove();
+    totalWatts -= power;
+    updateTotalDisplay();
+    saveState();
+}
+
+function updateTotalDisplay() {
+    // RIC N°03, 5.4.2.2 - Factor de Demanda para viviendas.
+    // 100% a los primeros 3kW, 70% al resto.
+    let demandedWatts = 0;
+    if (totalWatts <= 3000) {
+        demandedWatts = totalWatts;
+    } else {
+        demandedWatts = 3000 + (totalWatts - 3000) * 0.70;
+    }
+
+    document.getElementById('l-total-power').innerText = totalWatts.toLocaleString() + " W";
+    document.getElementById('l-demanded-power').innerText = demandedWatts.toLocaleString(undefined, {maximumFractionDigits: 0}) + " W";
+}
+
+function useDemandedPowerForFeeder() {
+    // 1. Get the demanded power value from the DOM.
+    const demandedPowerText = document.getElementById('l-demanded-power').innerText;
+    // Remove non-digit characters to parse the number correctly, regardless of locale formatting.
+    const demandedPowerValue = parseFloat(demandedPowerText.replace(/[^0-9]/g, ''));
+
+    if (isNaN(demandedPowerValue) || demandedPowerValue <= 0) {
+        alert('No hay potencia demandada para calcular. Agregue circuitos al cuadro de cargas.');
+        return;
+    }
+
+    // 2. Set this value in the feeder calculator's power input.
+    document.getElementById('f-power').value = demandedPowerValue;
+
+    // 3. Switch to the feeder tab to show the user the result.
+    switchTab('feeder');
+
+    // 4. Recalculate the feeder with the new power value.
+    calculateFeeder();
+}
+
+// --- Tool 4: Grounding Logic ---
+function calculateGrounding() {
+    const rho_input = document.getElementById('g-resistivity');
+    const L_input = document.getElementById('g-length');
+    const d_input = document.getElementById('g-diameter');
+
+    const rho = parseFloat(rho_input.value); // Resistividad en Ω.m
+    const L = parseFloat(L_input.value);     // Longitud en m
+    const d = parseFloat(d_input.value);     // Diámetro en mm
+
+    if (!rho_input.value || !L_input.value || !d_input.value || rho <= 0 || L <= 0 || d <= 0) {
+        document.getElementById('g-result-placeholder').classList.remove('hidden');
+        document.getElementById('g-result-content').classList.add('hidden');
+        return;
+    }
+
+    // Convertir diámetro de mm a m
+    const d_m = d / 1000;
+
+    // Fórmula de Dwight para un electrodo vertical
+    // R = (ρ / (2 * π * L)) * (ln(4L/d) - 1)
+    const R = (rho / (2 * Math.PI * L)) * (Math.log((4 * L) / d_m) - 1);
+
+    // Render Results
+    document.getElementById('g-result-placeholder').classList.add('hidden');
+    document.getElementById('g-result-content').classList.remove('hidden');
+
+    document.getElementById('res-grounding').innerText = R.toFixed(2) + " Ω";
+
+    const statusDiv = document.getElementById('g-res-status');
+    // La norma RIC N°06 (punto 5.2.3) exige <= 20 Ohm para instalaciones de consumo.
+    if (R > 20) {
+        statusDiv.className = "mt-4 p-3 rounded text-center font-bold text-sm bg-yellow-100 text-yellow-700 border border-yellow-300";
+        statusDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-2"></i>VALOR ELEVADO (>20 Ω)<br>Se recomienda mejorar el sistema o usar más electrodos.`;
+    } else {
+        statusDiv.className = "mt-4 p-3 rounded text-center font-bold text-sm bg-green-100 text-green-700 border border-green-300";
+        statusDiv.innerHTML = `<i class="fa-solid fa-check-circle mr-2"></i>VALOR ACEPTABLE (≤20 Ω)<br>Cumple para instalaciones de consumo BT.`;
+    }
+
+    saveState();
+}
+
+// --- Export Logic ---
+function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    // --- Document Header ---
+    doc.setFontSize(18);
+    doc.setTextColor('#0f172a'); // sec.blue
+    doc.text("Memoria de Cálculo Eléctrico", 14, 22);
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Fecha de Generación: ${new Date().toLocaleDateString('es-CL')}`, 14, 30);
+
+    let yPos = 45; // Initial Y position for content
+
+    // --- 1. Feeder Calculation Results ---
+    doc.setFontSize(14);
+    doc.setTextColor('#0f172a');
+    doc.text("1. Cálculo de Alimentador", 14, yPos);
+    yPos += 8;
+
+    const isFeederCalculated = !document.getElementById('f-result-content').classList.contains('hidden');
+    if (isFeederCalculated) {
+        const current = document.getElementById('res-current').innerText;
+        const section = document.getElementById('res-section').innerText;
+        const dropV = document.getElementById('res-drop-v').innerText;
+        const dropP = document.getElementById('res-drop-p').innerText;
+        const status = document.getElementById('res-status').innerText;
+        const fT = document.getElementById('res-factor-t').innerText;
+        const fG = document.getElementById('res-factor-g').innerText;
+        const temp = document.getElementById('f-temp').options[document.getElementById('f-temp').selectedIndex].text;
+        const group = document.getElementById('f-group').options[document.getElementById('f-group').selectedIndex].text;
+
+        doc.autoTable({
+            startY: yPos,
+            head: [['Parámetro', 'Valor']],
+            body: [
+                ['Corriente Nominal', current],
+                [`Factor de Temperatura (${temp})`, fT],
+                [`Factor de Agrupamiento (${group} cond.)`, fG],
+                ['Sección Sugerida (Cu)', section],
+                ['Caída de Tensión (V)', dropV],
+                ['Porcentaje Caída (%)', dropP],
+                ['Estado Normativo', status.replace(/\n/g, ' ')]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: '#0f172a' }
+        });
+        yPos = doc.autoTable.previous.finalY + 15;
+    } else {
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text("No se ha realizado el cálculo del alimentador.", 14, yPos);
+        yPos += 15;
+    }
+
+    // --- 2. Conduit Occupation Results ---
+    doc.setFontSize(14);
+    doc.setTextColor('#0f172a');
+    doc.text("2. Ocupación de Ducto", 14, yPos);
+    yPos += 8;
+
+    const occupationPercent = document.getElementById('c-result-percent').innerText;
+    if (occupationPercent !== '0%') {
+        const ductSize = document.getElementById('c-duct-size').options[document.getElementById('c-duct-size').selectedIndex].text;
+        const wireSize = document.getElementById('c-wire-size').options[document.getElementById('c-wire-size').selectedIndex].text;
+        const wireQty = document.getElementById('c-wire-qty').value;
+        const status = document.getElementById('c-result-text').innerText;
+
+        doc.autoTable({
+            startY: yPos,
+            head: [['Parámetro', 'Valor']],
+            body: [
+                ['Diámetro del Ducto', ductSize],
+                ['Sección del Conductor', wireSize],
+                ['Cantidad de Conductores', wireQty],
+                ['Porcentaje de Ocupación', occupationPercent],
+                ['Estado Normativo', status]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: '#0f172a' }
+        });
+        yPos = doc.autoTable.previous.finalY + 15;
+    } else {
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text("No se ha realizado el cálculo de ocupación de ducto.", 14, yPos);
+        yPos += 15;
+    }
+
+    // --- 3. Load Schedule ---
+    doc.setFontSize(14);
+    doc.setTextColor('#0f172a');
+    doc.text("3. Cuadro de Cargas", 14, yPos);
+    yPos += 8;
+
+    const loadTableBody = document.getElementById('load-table-body');
+    if (loadTableBody.rows.length > 0) {
+        doc.autoTable({
+            startY: yPos,
+            head: [['Circuito', 'Potencia (W)', 'Sección Cable', 'Protección']],
+            body: Array.from(loadTableBody.rows).map(row => [
+                row.cells[0].innerText,
+                row.cells[1].innerText,
+                row.cells[2].innerText,
+                row.cells[3].innerText
+            ]),
+            foot: [
+                [{ content: 'TOTAL INSTALADO:', colSpan: 3, styles: { halign: 'right', fontStyle: 'normal' } }, document.getElementById('l-total-power').innerText],
+                [{ content: 'POTENCIA DEMANDADA:', colSpan: 3, styles: { halign: 'right' } }, document.getElementById('l-demanded-power').innerText]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: '#0f172a' },
+            footStyles: { fillColor: '#e2e8f0', textColor: '#0f172a', fontStyle: 'bold' }
+        });
+    } else {
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text("No se han agregado circuitos al cuadro de cargas.", 14, yPos);
+    }
+
+    // --- Save the PDF ---
+    doc.save('Memoria_de_Calculo_SEC.pdf');
+}
+
+// --- State Persistence Logic ---
+function saveState() {
+    const loads = [];
+    const tableRows = document.querySelectorAll('#load-table-body tr');
+    tableRows.forEach(row => {
+        loads.push({
+            name: row.cells[0].innerText,
+            power: parseFloat(row.cells[1].innerText.replace(' W', '')),
+            wireSection: parseFloat(row.cells[2].innerText.replace(' mm²', '')),
+            protection: row.cells[3].innerText
+        });
+    });
+
+    const activeTabBtn = document.querySelector('.tab-active');
+    const activeTabId = activeTabBtn ? activeTabBtn.id.replace('btn-', '') : 'feeder';
+
+    const state = {
+        activeTab: activeTabId,
+        feeder: {
+            power: document.getElementById('f-power').value,
+            voltage: document.getElementById('f-voltage').value,
+            fp: document.getElementById('f-fp').value,
+            length: document.getElementById('f-length').value,
+            temp: document.getElementById('f-temp').value,
+            group: document.getElementById('f-group').value,
+        },
+        conduit: {
+            ductSize: document.getElementById('c-duct-size').value,
+            wireSize: document.getElementById('c-wire-size').value,
+            qty: document.getElementById('c-wire-qty').value,
+        },
+        grounding: {
+            resistivity: document.getElementById('g-resistivity').value,
+            length: document.getElementById('g-length').value,
+            diameter: document.getElementById('g-diameter').value,
+        },
+        loads: loads
+    };
+
+    localStorage.setItem('calculatorState', JSON.stringify(state));
+}
+
+function loadState() {
+    const savedState = localStorage.getItem('calculatorState');
+    if (!savedState) return;
+
+    const state = JSON.parse(savedState);
+
+    // Load Feeder
+    if (state.feeder) {
+        document.getElementById('f-power').value = state.feeder.power || '';
+        document.getElementById('f-voltage').value = state.feeder.voltage || '220';
+        document.getElementById('f-fp').value = state.feeder.fp || '0.93';
+        document.getElementById('f-length').value = state.feeder.length || '';
+        document.getElementById('f-temp').value = state.feeder.temp || '1.00';
+        document.getElementById('f-group').value = state.feeder.group || '1.00';
+        // Recalculate if there's data
+        if (state.feeder.power) calculateFeeder();
+    }
+
+    // Load Conduit
+    if (state.conduit) {
+        document.getElementById('c-duct-size').value = state.conduit.ductSize || '16';
+        document.getElementById('c-wire-size').value = state.conduit.wireSize || '1.5';
+        document.getElementById('c-wire-qty').value = state.conduit.qty || '3';
+        calculateConduit();
+    }
+
+    // Load Grounding
+    if (state.grounding) {
+        document.getElementById('g-resistivity').value = state.grounding.resistivity || '';
+        document.getElementById('g-length').value = state.grounding.length || '2.5';
+        document.getElementById('g-diameter').value = state.grounding.diameter || '16';
+        // Recalculate if there's data
+        if (state.grounding.resistivity) calculateGrounding();
+    }
+    
+    // Load Loads
+    if (state.loads && Array.isArray(state.loads)) {
+        const tbody = document.getElementById('load-table-body');
+        tbody.innerHTML = ''; // Clear existing rows
+        totalWatts = 0;
+        state.loads.forEach(load => {
+            const row = document.createElement('tr');
+            row.className = "border-b hover:bg-slate-50 transition dark:border-slate-700 dark:hover:bg-slate-700/50";
+            row.innerHTML = `
+                <td class="p-3 font-medium">${load.name}</td>
+                <td class="p-3">${load.power} W</td>
+                <td class="p-3">${load.wireSection.toFixed(1)} mm²</td>
+                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300">${load.protection}</span></td>
+                <td class="p-3 text-center">
+                    <button onclick="removeRow(this, ${load.power})" class="text-red-500 hover:text-red-700">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+            totalWatts += load.power;
+        });
+        updateTotalDisplay();
+    }
+
+    // Load Active Tab
+    if (state.activeTab) {
+        // We need to ensure this runs after the initial render is complete
+        setTimeout(() => switchTab(state.activeTab), 0);
+    }
+}
