@@ -50,6 +50,9 @@
                 <button onclick="switchTab('conduit')" id="btn-conduit" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
                     <i class="fa-solid fa-circle-notch mr-2"></i>Ocupación Ductos
                 </button>
+                <button onclick="switchTab('photovoltaic')" id="btn-photovoltaic" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
+                    <i class="fa-solid fa-solar-panel mr-2"></i>Calculadora Solar PV
+                </button>
                 <button onclick="switchTab('loads')" id="btn-loads" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
                     <i class="fa-solid fa-table-list mr-2"></i>Cuadro de Cargas
                 </button>
@@ -90,6 +93,11 @@
                                 <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Factor de Potencia</label>
                                 <input type="number" id="f-fp" value="0.93" step="0.01" max="1" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
                                 <p id="f-fp-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1 dark:text-slate-400">Factor Simultaneidad</label>
+                                <input type="number" id="f-simultaneity" value="1.0" step="0.01" max="1" oninput="calculateFeeder()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white" title="Factor de simultaneidad (0.6-1.0). Se usa 1.0 si la potencia ya está ajustada (ej: desde Cuadro de Cargas).">
+                                <p id="f-simultaneity-error" class="text-red-500 text-xs mt-1 hidden"></p>
                             </div>
                         </div>
                         <div>
@@ -205,6 +213,80 @@
                             <span id="c-result-percent" class="text-2xl font-bold text-slate-700 dark:text-slate-300">0%</span>
                         </div>
                         <p id="c-result-text" class="font-medium text-slate-600 dark:text-slate-400">Máximo permitido: 40%</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 2.5: Calculadora Fotovoltaica -->
+        <section id="tab-photovoltaic" class="hidden fade-in space-y-6">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <h2 class="text-lg font-bold text-sec-blue mb-4 border-b pb-2 dark:text-white dark:border-slate-600">Calculadora Solar Fotovoltaica (Ley 21.118)</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Inputs -->
+                    <div class="space-y-4">
+                        <div class="p-4 bg-slate-50 rounded-lg border dark:bg-slate-900/50 dark:border-slate-700">
+                            <h3 class="font-bold text-slate-700 dark:text-slate-300 mb-2">Datos del Panel Solar</h3>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Potencia (Wp)</label>
+                                    <input type="number" id="pv-panel-wp" value="450" oninput="calculatePhotovoltaic()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Voc (V)</label>
+                                    <input type="number" id="pv-panel-voc" value="49.5" step="0.1" oninput="calculatePhotovoltaic()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Isc (A)</label>
+                                    <input type="number" id="pv-panel-isc" value="11.6" step="0.1" oninput="calculatePhotovoltaic()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-lg border dark:bg-slate-900/50 dark:border-slate-700">
+                            <h3 class="font-bold text-slate-700 dark:text-slate-300 mb-2">Configuración del String/Arreglo</h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Paneles en Serie</label>
+                                    <input type="number" id="pv-string-series" value="8" min="1" oninput="calculatePhotovoltaic()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">N° de Strings</label>
+                                    <input type="number" id="pv-string-parallel" value="1" min="1" oninput="calculatePhotovoltaic()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                </div>
+                            </div>
+                        </div>
+                         <div class="p-4 bg-slate-50 rounded-lg border dark:bg-slate-900/50 dark:border-slate-700">
+                            <h3 class="font-bold text-slate-700 dark:text-slate-300 mb-2">Datos del Inversor</h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Max Voltaje DC (V)</label>
+                                    <input type="number" id="pv-inverter-volt" value="550" oninput="calculatePhotovoltaic()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Max Corriente (A)</label>
+                                    <input type="number" id="pv-inverter-curr" value="15" oninput="calculatePhotovoltaic()" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results -->
+                    <div class="bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col justify-center dark:bg-slate-900/50 dark:border-slate-700 space-y-3">
+                        <div class="text-center">
+                            <span class="text-slate-600 dark:text-slate-400">Potencia Total del Campo FV:</span>
+                            <p class="font-mono font-bold text-2xl my-1 text-sec-blue dark:text-sec-accent" id="pv-res-power">0 kWp</p>
+                        </div>
+                        <div id="pv-res-status-volt" class="p-3 rounded text-center font-bold text-sm"></div>
+                        <div id="pv-res-status-curr" class="p-3 rounded text-center font-bold text-sm"></div>
+                        
+                        <div class="pt-3 border-t dark:border-slate-700">
+                            <h4 class="text-md font-bold text-slate-700 dark:text-slate-300 mb-2 text-center">Dimensionamiento Sugerido (DC)</h4>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between items-center"><span class="text-slate-600 dark:text-slate-400">Cable Solar PV1-F:</span><span class="font-mono font-bold dark:text-white" id="pv-res-cable">N/A</span></div>
+                                <div class="flex justify-between items-center"><span class="text-slate-600 dark:text-slate-400">Fusible gPV por String:</span><span class="font-mono font-bold dark:text-white" id="pv-res-fuse">N/A</span></div>
+                                <div class="flex justify-between items-center"><span class="text-slate-600 dark:text-slate-400">Descargador (SPD):</span><span class="font-mono font-bold dark:text-white" id="pv-res-spd">N/A</span></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

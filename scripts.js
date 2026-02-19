@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- Navigation Logic ---
 function switchTab(tabId) {
     // Hide all sections
-    ['feeder', 'conduit', 'loads', 'grounding', 'guide'].forEach(id => {
+    ['feeder', 'conduit', 'photovoltaic', 'loads', 'grounding', 'guide'].forEach(id => {
         document.getElementById(`tab-${id}`).classList.add('hidden');
         const btn = document.getElementById(`btn-${id}`);
         if (btn) {
@@ -81,7 +81,7 @@ const wireData = [
 
 function calculateFeeder() {
     // --- 1. Clear previous errors ---
-    const fieldsToValidate = ['f-power', 'f-length', 'f-fp'];
+    const fieldsToValidate = ['f-power', 'f-length', 'f-fp', 'f-simultaneity'];
     fieldsToValidate.forEach(id => {
         document.getElementById(id).classList.remove('border-red-500');
         const errorEl = document.getElementById(`${id}-error`);
@@ -93,11 +93,13 @@ function calculateFeeder() {
     const P_input = document.getElementById('f-power');
     const L_input = document.getElementById('f-length');
     const FP_input = document.getElementById('f-fp');
+    const FS_input = document.getElementById('f-simultaneity');
 
     const P = parseFloat(P_input.value);
     const V = parseFloat(document.getElementById('f-voltage').value);
     const L = parseFloat(L_input.value);
     const FP = parseFloat(FP_input.value);
+    const FS = parseFloat(FS_input.value);
     const fT = parseFloat(document.getElementById('f-temp').value);
     const fG = parseFloat(document.getElementById('f-group').value);
 
@@ -112,15 +114,17 @@ function calculateFeeder() {
     if (!P_input.value || P <= 0) displayError('f-power', 'Potencia debe ser un número positivo.');
     if (!L_input.value || L <= 0) displayError('f-length', 'Longitud debe ser un número positivo.');
     if (!FP_input.value || FP <= 0 || FP > 1) displayError('f-fp', 'FP debe estar entre 0.01 y 1.');
+    if (!FS_input.value || FS <= 0 || FS > 1) displayError('f-simultaneity', 'FS debe estar entre 0.01 y 1.');
 
     if (!isValid) return;
 
     // 3. Calculate Current (I)
+    const P_ajustada = P * FS;
     let I = 0;
     if (V === 220) {
-        I = P / (V * FP);
+        I = P_ajustada / (V * FP);
     } else {
-        I = P / (Math.sqrt(3) * V * FP);
+        I = P_ajustada / (Math.sqrt(3) * V * FP);
     }
 
     // Corregir la corriente necesaria por los factores de ajuste.
@@ -220,6 +224,77 @@ function calculateConduit() {
         text.className = "text-2xl font-bold text-green-600";
         msg.innerHTML = `<span class="text-green-600 font-bold"><i class="fa-solid fa-check"></i> Aprobado</span>`;
     }
+
+    saveState();
+}
+
+// --- Tool 2.5: Photovoltaic Logic ---
+function calculatePhotovoltaic() {
+    // 1. Get all input values
+    const panelWp = parseFloat(document.getElementById('pv-panel-wp').value);
+    const panelVoc = parseFloat(document.getElementById('pv-panel-voc').value);
+    const panelIsc = parseFloat(document.getElementById('pv-panel-isc').value);
+    const seriesCount = parseInt(document.getElementById('pv-string-series').value);
+    const parallelCount = parseInt(document.getElementById('pv-string-parallel').value);
+    const inverterVmax = parseFloat(document.getElementById('pv-inverter-volt').value);
+    const inverterImax = parseFloat(document.getElementById('pv-inverter-curr').value);
+
+    // Basic validation
+    if (isNaN(panelWp) || isNaN(panelVoc) || isNaN(panelIsc) || isNaN(seriesCount) || isNaN(parallelCount) || isNaN(inverterVmax) || isNaN(inverterImax)) {
+        return; // Or show a placeholder
+    }
+
+    // 2. Perform calculations
+    const totalWp = panelWp * seriesCount * parallelCount;
+    const stringVoc = panelVoc * seriesCount;
+    const arrayIsc = panelIsc * parallelCount;
+
+    // 3. Render total power
+    document.getElementById('pv-res-power').innerText = (totalWp / 1000).toFixed(2) + " kWp";
+
+    // 4. Validate Voltage
+    const voltStatusDiv = document.getElementById('pv-res-status-volt');
+    // IEC 60364-7-712 recommends a safety factor for temperature. A simple 1.15 is common for cold conditions.
+    const vocCorrected = stringVoc * 1.15; 
+    if (vocCorrected > inverterVmax) {
+        voltStatusDiv.className = "p-3 rounded text-center font-bold text-sm bg-red-100 text-red-700 border border-red-300";
+        voltStatusDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-2"></i>VOLTAJE EXCEDE LÍMITE<br>Voc corregido (${vocCorrected.toFixed(1)}V) > Inversor (${inverterVmax}V). Reduzca paneles en serie.`;
+    } else {
+        voltStatusDiv.className = "p-3 rounded text-center font-bold text-sm bg-green-100 text-green-700 border border-green-300";
+        voltStatusDiv.innerHTML = `<i class="fa-solid fa-check-circle mr-2"></i>VOLTAJE COMPATIBLE<br>Voc corregido (${vocCorrected.toFixed(1)}V) ≤ Inversor (${inverterVmax}V).`;
+    }
+
+    // 5. Validate Current
+    const currStatusDiv = document.getElementById('pv-res-status-curr');
+    // Safety factor for Isc (e.g., 1.25 for irradiance gain)
+    const iscCorrected = arrayIsc * 1.25;
+    if (iscCorrected > inverterImax) {
+        currStatusDiv.className = "p-3 rounded text-center font-bold text-sm bg-yellow-100 text-yellow-700 border border-yellow-300";
+        currStatusDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-2"></i>CORRIENTE ELEVADA<br>Isc corregida (${iscCorrected.toFixed(1)}A) > Inversor (${inverterImax}A). Considere otro MPPT o inversor.`;
+    } else {
+        currStatusDiv.className = "p-3 rounded text-center font-bold text-sm bg-green-100 text-green-700 border border-green-300";
+        currStatusDiv.innerHTML = `<i class="fa-solid fa-check-circle mr-2"></i>CORRIENTE COMPATIBLE<br>Isc corregida (${iscCorrected.toFixed(1)}A) ≤ Inversor (${inverterImax}A).`;
+    }
+
+    // 6. Suggest components
+    // Cable (based on Isc per string)
+    const stringIscCorrected = panelIsc * 1.25;
+    let cableSize = "4 mm²";
+    if (stringIscCorrected > 13) cableSize = "6 mm²"; // Ampacity of 4mm2 is ~17A, 6mm2 is ~22A in free air. Simple rule.
+    if (stringIscCorrected > 20) cableSize = "10 mm²";
+    document.getElementById('pv-res-cable').innerText = cableSize;
+
+    // Fuse (based on Isc per string, factor 1.56 is common)
+    const fuseMinRating = panelIsc * 1.56;
+    const fuseSizes = [10, 12, 15, 20, 25];
+    let suggestedFuse = fuseSizes.find(size => size >= fuseMinRating) || fuseSizes[fuseSizes.length - 1];
+    document.getElementById('pv-res-fuse').innerText = `${suggestedFuse}A (1000V DC)`;
+
+    // SPD (based on corrected Voc)
+    let spdVoltage = "600V DC";
+    if (vocCorrected > 600) spdVoltage = "1000V DC";
+    if (vocCorrected > 1000) spdVoltage = "1500V DC";
+    document.getElementById('pv-res-spd').innerText = `Tipo 2, Ucpv ≥ ${spdVoltage}`;
 
     saveState();
 }
@@ -366,6 +441,7 @@ function useDemandedPowerForFeeder() {
 
     // 2. Set this value in the feeder calculator's power input.
     document.getElementById('f-power').value = demandedPowerValue;
+    document.getElementById('f-simultaneity').value = 1.0; // La potencia ya está ajustada por demanda
 
     // 3. Switch to the feeder tab to show the user the result.
     switchTab('feeder');
@@ -563,6 +639,7 @@ function saveState() {
             power: document.getElementById('f-power').value,
             voltage: document.getElementById('f-voltage').value,
             fp: document.getElementById('f-fp').value,
+            simultaneity: document.getElementById('f-simultaneity').value,
             length: document.getElementById('f-length').value,
             temp: document.getElementById('f-temp').value,
             group: document.getElementById('f-group').value,
@@ -571,6 +648,15 @@ function saveState() {
             ductSize: document.getElementById('c-duct-size').value,
             wireSize: document.getElementById('c-wire-size').value,
             qty: document.getElementById('c-wire-qty').value,
+        },
+        photovoltaic: {
+            panelWp: document.getElementById('pv-panel-wp').value,
+            panelVoc: document.getElementById('pv-panel-voc').value,
+            panelIsc: document.getElementById('pv-panel-isc').value,
+            seriesCount: document.getElementById('pv-string-series').value,
+            parallelCount: document.getElementById('pv-string-parallel').value,
+            inverterVmax: document.getElementById('pv-inverter-volt').value,
+            inverterImax: document.getElementById('pv-inverter-curr').value,
         },
         grounding: {
             resistivity: document.getElementById('g-resistivity').value,
@@ -594,6 +680,7 @@ function loadState() {
         document.getElementById('f-power').value = state.feeder.power || '';
         document.getElementById('f-voltage').value = state.feeder.voltage || '220';
         document.getElementById('f-fp').value = state.feeder.fp || '0.93';
+        document.getElementById('f-simultaneity').value = state.feeder.simultaneity || '1.0';
         document.getElementById('f-length').value = state.feeder.length || '';
         document.getElementById('f-temp').value = state.feeder.temp || '1.00';
         document.getElementById('f-group').value = state.feeder.group || '1.00';
@@ -608,6 +695,19 @@ function loadState() {
         document.getElementById('c-wire-qty').value = state.conduit.qty || '3';
         calculateConduit();
     }
+
+    // Load Photovoltaic
+    if (state.photovoltaic) {
+        document.getElementById('pv-panel-wp').value = state.photovoltaic.panelWp || '450';
+        document.getElementById('pv-panel-voc').value = state.photovoltaic.panelVoc || '49.5';
+        document.getElementById('pv-panel-isc').value = state.photovoltaic.panelIsc || '11.6';
+        document.getElementById('pv-string-series').value = state.photovoltaic.seriesCount || '8';
+        document.getElementById('pv-string-parallel').value = state.photovoltaic.parallelCount || '1';
+        document.getElementById('pv-inverter-volt').value = state.photovoltaic.inverterVmax || '550';
+        document.getElementById('pv-inverter-curr').value = state.photovoltaic.inverterImax || '15';
+        calculatePhotovoltaic();
+    }
+
 
     // Load Grounding
     if (state.grounding) {
