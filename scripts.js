@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- Navigation Logic ---
 function switchTab(tabId) {
     // Hide all sections
-    ['feeder', 'conduit', 'photovoltaic', 'loads', 'grounding', 'guide'].forEach(id => {
+    ['feeder', 'conduit', 'photovoltaic', 'loads', 'grounding', 'guide', 'sketch'].forEach(id => {
         document.getElementById(`tab-${id}`).classList.add('hidden');
         const btn = document.getElementById(`btn-${id}`);
         if (btn) {
@@ -61,6 +61,11 @@ function switchTab(tabId) {
     activeBtn.classList.remove('tab-inactive');
     activeBtn.classList.add('tab-active');
     saveState();
+
+    // Initialize Canvas if sketch tab is selected and not already initialized
+    if (tabId === 'sketch') {
+        initSketchCanvas();
+    }
 }
 
 // --- Tool 1: Feeder Logic ---
@@ -218,11 +223,11 @@ function calculateConduit() {
     if (occupation > 40) {
         circle.className = "w-32 h-32 rounded-full border-8 border-red-500 flex items-center justify-center mb-4 transition-all duration-500 bg-red-50";
         text.className = "text-2xl font-bold text-red-600";
-        msg.innerHTML = `<span class="text-red-600 font-bold"><i class="fa-solid fa-xmark"></i> Rechazado (Max 40%)</span>`;
+        msg.innerHTML = `<span class="font-bold text-red-600"><i class="fa-solid fa-xmark"></i> Rechazado (>40%)</span>`;
     } else {
         circle.className = "w-32 h-32 rounded-full border-8 border-green-500 flex items-center justify-center mb-4 transition-all duration-500 bg-green-50";
         text.className = "text-2xl font-bold text-green-600";
-        msg.innerHTML = `<span class="text-green-600 font-bold"><i class="fa-solid fa-check"></i> Aprobado</span>`;
+        msg.innerHTML = `<span class="font-bold text-green-600"><i class="fa-solid fa-check"></i> Aprobado (≤40%)</span>`;
     }
 
     saveState();
@@ -302,41 +307,103 @@ function calculatePhotovoltaic() {
 // --- Tool 3: Load Schedule Logic ---
 let totalWatts = 0;
 
-function suggestProtection() {
+function updateCircuitSuggestions() {
+    const nameInput = document.getElementById('l-name');
     const powerInput = document.getElementById('l-power');
     const protectionInput = document.getElementById('l-protection');
-    const power = parseFloat(powerInput.value);
+    const wireSectionInput = document.getElementById('l-wire-section');
+    const differentialInput = document.getElementById('l-differential');
 
+    const power = parseFloat(powerInput.value);
+    const name = nameInput.value.toLowerCase();
+
+    // --- 1. Suggest Protection (Breaker) ---
     if (isNaN(power) || power <= 0) {
         protectionInput.value = '';
-        return;
+        return; // Exit if no valid power
     }
 
-    // Asume 220V para circuitos de consumo general (Alumbrado/Enchufes)
     const current = power / 220;
-
-    // Capacidades normalizadas de disyuntores
     const breakerSizes = [6, 10, 16, 20, 25, 32, 40];
-    let suggestedBreaker = breakerSizes[breakerSizes.length - 1]; // Por defecto el máximo si la corriente es muy alta
-
+    let suggestedBreaker = breakerSizes[breakerSizes.length - 1];
     for (const size of breakerSizes) {
-        // El disyuntor debe ser mayor o igual a la corriente del circuito
         if (size >= current) {
             suggestedBreaker = size;
             break;
         }
     }
-    
-    // Formato para monofásico
     protectionInput.value = `1x${suggestedBreaker}A`;
+
+    // --- 2. Suggest Wire Section ---
+    // Find the minimum wire section that can handle the breaker's current (I_conductor >= I_proteccion)
+    const suggestedWire = wireData.find(w => w.amp >= suggestedBreaker);
+    if (suggestedWire) {
+        wireSectionInput.value = suggestedWire.section;
+    } else {
+        // If breaker is > max wire ampacity in our table, select the max wire.
+        wireSectionInput.value = wireData[wireData.length - 1].section;
+    }
+
+    // --- 3. Suggest Differential Type ---
+    // Suggests "Tipo A" for circuits with electronics.
+    const electronicKeywords = ['pc', 'computador', 'escritorio', 'oficina', 'electronica', 'tv', 'audio', 'server', 'servidor'];
+    const needsSuperImmunized = electronicKeywords.some(keyword => name.includes(keyword));
+    
+    if (needsSuperImmunized) {
+        differentialInput.value = 'Tipo A';
+    } else {
+        differentialInput.value = 'General';
+    }
+}
+
+// --- Table Editing Helpers ---
+function editFocus(el, suffix = '') {
+    const text = el.innerText;
+    if (suffix && text.includes(suffix)) {
+        el.innerText = text.replace(suffix, '').trim();
+    }
+}
+
+function editBlur(el, suffix = '', isPower = false) {
+    let text = el.innerText.trim();
+    if (text === '') text = '0';
+    
+    if (suffix) {
+        const val = parseFloat(text);
+        if (!isNaN(val)) {
+            el.innerText = val + suffix;
+        } else {
+            el.innerText = text + suffix;
+        }
+    }
+    
+    if (isPower) {
+        recalculateLoadTotals();
+    }
+    saveState();
+}
+
+function recalculateLoadTotals() {
+    totalWatts = 0;
+    const rows = document.querySelectorAll('#load-table-body tr');
+    rows.forEach(row => {
+        const powerText = row.cells[1].innerText;
+        // parseFloat parsea hasta encontrar un caracter no numérico, por lo que "100 W" funciona
+        const power = parseFloat(powerText) || 0; 
+        totalWatts += power;
+    });
+    updateTotalDisplay();
 }
 
 function addLoadRow() {
     // --- 1. Clear previous errors ---
-    const fieldsToValidate = ['l-name', 'l-power', 'l-protection', 'l-wire-section'];
+    const fieldsToValidate = ['l-name', 'l-power', 'l-protection', 'l-wire-section', 'l-differential'];
     fieldsToValidate.forEach(id => {
-        document.getElementById(id).classList.remove('border-red-500');
-        document.getElementById(`${id}-error`).classList.add('hidden');
+        const field = document.getElementById(id);
+        const errorEl = document.getElementById(`${id}-error`);
+        
+        if (field) field.classList.remove('border-red-500');
+        if (errorEl) errorEl.classList.add('hidden');
     });
 
     // --- 2. Get values and validate ---
@@ -345,12 +412,14 @@ function addLoadRow() {
     const powerInput = document.getElementById('l-power');
     const protectionInput = document.getElementById('l-protection');
     const wireSectionInput = document.getElementById('l-wire-section');
+    const differentialInput = document.getElementById('l-differential');
 
     const name = nameInput.value.trim();
     const power = parseFloat(powerInput.value);
     const protection = protectionInput.value.trim();
     const wireSection = parseFloat(wireSectionInput.value);
 
+    const differential = differentialInput.value;
     const displayError = (id, message) => {
         document.getElementById(id).classList.add('border-red-500');
         const errorEl = document.getElementById(`${id}-error`);
@@ -359,19 +428,33 @@ function addLoadRow() {
         isValid = false;
     };
 
-    if (!name) displayError('l-name', 'Ingrese un nombre para el circuito.');
+    if (!name) displayError('l-name', 'Seleccione un circuito de la lista.');
     if (!powerInput.value || isNaN(power) || power <= 0) displayError('l-power', 'Ingrese una potencia válida y positiva.');
     if (!protection) displayError('l-protection', 'Protección no sugerida. Ingrese una potencia válida.');
 
-    // --- 3. Ampacity Validation (Coordination Check) ---
+    // --- 3. Validación de Ampacidad (Coordinación Protección-Conductor) ---
     let isSafe = true;
     if (isValid && protection && wireSection) {
         const breakerRating = parseFloat(protection.split('x')[1]);
-        const wireInfo = wireData.find(w => w.section === wireSection);
-        const maxWireAmps = wireInfo ? wireInfo.amp : 0;
+        let errorMessage = '';
 
-        if (breakerRating > maxWireAmps) {
-            displayError('l-wire-section', `¡Riesgo! Protección de ${breakerRating}A es muy alta para cable de ${wireSection}mm² (Máx: ${maxWireAmps}A).`);
+        // Regla específica para circuitos de alumbrado (1.5mm²) según RIC
+        if (wireSection === 1.5 && breakerRating > 10) {
+            errorMessage = `Para 1.5mm² (alumbrado), la protección no debe superar 10A.`;
+        // Regla específica para circuitos de enchufes (2.5mm²) según RIC
+        } else if (wireSection === 2.5 && breakerRating > 16) {
+            errorMessage = `Para 2.5mm² (enchufes), la protección no debe superar 16A.`;
+        // Validación general para otras secciones (basada en ampacidad de tabla)
+        } else {
+            const wireInfo = wireData.find(w => w.section === wireSection);
+            const maxWireAmps = wireInfo ? wireInfo.amp : 0;
+            if (breakerRating > maxWireAmps) {
+                errorMessage = `Protección de ${breakerRating}A es muy alta para cable de ${wireSection}mm² (Máx: ${maxWireAmps}A).`;
+            }
+        }
+
+        if (errorMessage) {
+            displayError('l-protection', `¡Riesgo! ${errorMessage}`);
             isSafe = false;
         }
     }
@@ -382,15 +465,16 @@ function addLoadRow() {
     const row = document.createElement('tr');
     row.className = "border-b hover:bg-slate-50 transition dark:border-slate-700 dark:hover:bg-slate-700/50";
     row.innerHTML = `
-                <td class="p-3 font-medium">${name}</td>
-                <td class="p-3">${power} W</td>
-                <td class="p-3">${wireSection.toFixed(1)} mm²</td>
-                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300">${protection}</span></td>
+                <td class="p-3 font-medium" contenteditable="true" onblur="saveState()">${name}</td>
+                <td class="p-3" contenteditable="true" onfocus="editFocus(this, ' W')" onblur="editBlur(this, ' W', true)">${power} W</td>
+                <td class="p-3" contenteditable="true" onfocus="editFocus(this, ' mm²')" onblur="editBlur(this, ' mm²')">${wireSection.toFixed(1)} mm²</td>
+                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300" contenteditable="true" onblur="saveState()">${protection}</span></td>                
+                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300" contenteditable="true" onblur="saveState()">${differential}</span></td>
                 <td class="p-3 text-center">
-                    <button onclick="removeRow(this, ${power})" class="text-red-500 hover:text-red-700">
+                    <button onclick="removeRow(this)" class="text-red-500 hover:text-red-700">
                         <i class="fa-solid fa-trash"></i>
                     </button>
-                </td>
+                </td>                
             `;
     tbody.appendChild(row);
 
@@ -399,18 +483,18 @@ function addLoadRow() {
     updateTotalDisplay();
 
     // --- 4. Clear inputs ---
-    nameInput.value = "";
+    nameInput.selectedIndex = 0;
     powerInput.value = "";
     protectionInput.value = "";
     wireSectionInput.value = "1.5";
+    differentialInput.value = "General";
     saveState();
 }
 
-function removeRow(btn, power) {
+function removeRow(btn) {
     const row = btn.closest('tr');
     row.remove();
-    totalWatts -= power;
-    updateTotalDisplay();
+    recalculateLoadTotals();
     saveState();
 }
 
@@ -493,9 +577,20 @@ function calculateGrounding() {
 }
 
 // --- Export Logic ---
+function openReportModal() {
+    document.getElementById('report-modal').classList.remove('hidden');
+}
+
+function closeReportModal() {
+    document.getElementById('report-modal').classList.add('hidden');
+}
+
 function exportPDF() {
+    closeReportModal(); // Close modal first
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
+    const installerName = document.getElementById('installer-name').value.trim();
+    const installerLicense = document.getElementById('installer-license').value;
 
     // --- Document Header ---
     doc.setFontSize(18);
@@ -506,115 +601,446 @@ function exportPDF() {
     doc.text(`Fecha de Generación: ${new Date().toLocaleDateString('es-CL')}`, 14, 30);
 
     let yPos = 45; // Initial Y position for content
+    let sectionNum = 1;
+
+    // Get Checkbox States
+    const includeFeeder = document.getElementById('chk-feeder').checked;
+    const includeConduit = document.getElementById('chk-conduit').checked;
+    const includeLoads = document.getElementById('chk-loads').checked;
+    const includePV = document.getElementById('chk-photovoltaic').checked;
+    const includeGrounding = document.getElementById('chk-grounding').checked;
 
     // --- 1. Feeder Calculation Results ---
-    doc.setFontSize(14);
-    doc.setTextColor('#0f172a');
-    doc.text("1. Cálculo de Alimentador", 14, yPos);
-    yPos += 8;
+    if (includeFeeder) {
+        doc.setFontSize(14);
+        doc.setTextColor('#0f172a');
+        doc.text(`${sectionNum}. Cálculo de Alimentador`, 14, yPos);
+        sectionNum++;
+        yPos += 8;
+        if (!document.getElementById('f-result-content').classList.contains('hidden')) {
+            const current = document.getElementById('res-current').innerText;
+            const section = document.getElementById('res-section').innerText;
+            const dropV = document.getElementById('res-drop-v').innerText;
+            const dropP = document.getElementById('res-drop-p').innerText;
+            const status = document.getElementById('res-status').innerText;
+            const fT = document.getElementById('res-factor-t').innerText;
+            const fG = document.getElementById('res-factor-g').innerText;
+            const temp = document.getElementById('f-temp').options[document.getElementById('f-temp').selectedIndex].text;
+            const group = document.getElementById('f-group').options[document.getElementById('f-group').selectedIndex].text;
 
-    const isFeederCalculated = !document.getElementById('f-result-content').classList.contains('hidden');
-    if (isFeederCalculated) {
-        const current = document.getElementById('res-current').innerText;
-        const section = document.getElementById('res-section').innerText;
-        const dropV = document.getElementById('res-drop-v').innerText;
-        const dropP = document.getElementById('res-drop-p').innerText;
-        const status = document.getElementById('res-status').innerText;
-        const fT = document.getElementById('res-factor-t').innerText;
-        const fG = document.getElementById('res-factor-g').innerText;
-        const temp = document.getElementById('f-temp').options[document.getElementById('f-temp').selectedIndex].text;
-        const group = document.getElementById('f-group').options[document.getElementById('f-group').selectedIndex].text;
-
-        doc.autoTable({
-            startY: yPos,
-            head: [['Parámetro', 'Valor']],
-            body: [
-                ['Corriente Nominal', current],
-                [`Factor de Temperatura (${temp})`, fT],
-                [`Factor de Agrupamiento (${group} cond.)`, fG],
-                ['Sección Sugerida (Cu)', section],
-                ['Caída de Tensión (V)', dropV],
-                ['Porcentaje Caída (%)', dropP],
-                ['Estado Normativo', status.replace(/\n/g, ' ')]
-            ],
-            theme: 'grid',
-            headStyles: { fillColor: '#0f172a' }
-        });
-        yPos = doc.autoTable.previous.finalY + 15;
-    } else {
-        doc.setFontSize(10);
-        doc.setTextColor(150);
-        doc.text("No se ha realizado el cálculo del alimentador.", 14, yPos);
-        yPos += 15;
+            doc.autoTable({
+                startY: yPos,
+                head: [['Parámetro', 'Valor']],
+                body: [
+                    ['Corriente Nominal', current],
+                    [`Factor de Temperatura (${temp})`, fT],
+                    [`Factor de Agrupamiento (${group} cond.)`, fG],
+                    ['Sección Sugerida (Cu)', section],
+                    ['Caída de Tensión (V)', dropV],
+                    ['Porcentaje Caída (%)', dropP],
+                    ['Estado Normativo', status.replace(/\n/g, ' ')]
+                ],
+                theme: 'grid',
+                headStyles: { fillColor: '#0f172a' }
+            });
+            yPos = doc.autoTable.previous.finalY + 15;
+        } else {
+            doc.setFontSize(10);
+            doc.setTextColor(150);
+            doc.text("No se han ingresado datos para esta sección.", 14, yPos);
+            yPos += 10;
+        }
     }
 
     // --- 2. Conduit Occupation Results ---
-    doc.setFontSize(14);
-    doc.setTextColor('#0f172a');
-    doc.text("2. Ocupación de Ducto", 14, yPos);
-    yPos += 8;
+    if (includeConduit) {
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        doc.setFontSize(14);
+        doc.setTextColor('#0f172a');
+        doc.text(`${sectionNum}. Ocupación de Ducto`, 14, yPos);
+        sectionNum++;
+        yPos += 8;
+        if (document.getElementById('c-result-percent').innerText !== '0%') {
+            const occupationPercent = document.getElementById('c-result-percent').innerText;
+            const ductSize = document.getElementById('c-duct-size').options[document.getElementById('c-duct-size').selectedIndex].text;
+            const wireSize = document.getElementById('c-wire-size').options[document.getElementById('c-wire-size').selectedIndex].text;
+            const wireQty = document.getElementById('c-wire-qty').value;
+            const status = document.getElementById('c-result-text').innerText;
 
-    const occupationPercent = document.getElementById('c-result-percent').innerText;
-    if (occupationPercent !== '0%') {
-        const ductSize = document.getElementById('c-duct-size').options[document.getElementById('c-duct-size').selectedIndex].text;
-        const wireSize = document.getElementById('c-wire-size').options[document.getElementById('c-wire-size').selectedIndex].text;
-        const wireQty = document.getElementById('c-wire-qty').value;
-        const status = document.getElementById('c-result-text').innerText;
-
-        doc.autoTable({
-            startY: yPos,
-            head: [['Parámetro', 'Valor']],
-            body: [
-                ['Diámetro del Ducto', ductSize],
-                ['Sección del Conductor', wireSize],
-                ['Cantidad de Conductores', wireQty],
-                ['Porcentaje de Ocupación', occupationPercent],
-                ['Estado Normativo', status]
-            ],
-            theme: 'grid',
-            headStyles: { fillColor: '#0f172a' }
-        });
-        yPos = doc.autoTable.previous.finalY + 15;
-    } else {
-        doc.setFontSize(10);
-        doc.setTextColor(150);
-        doc.text("No se ha realizado el cálculo de ocupación de ducto.", 14, yPos);
-        yPos += 15;
+            doc.autoTable({
+                startY: yPos,
+                head: [['Parámetro', 'Valor']],
+                body: [
+                    ['Diámetro del Ducto', ductSize],
+                    ['Sección del Conductor', wireSize],
+                    ['Cantidad de Conductores', wireQty],
+                    ['Porcentaje de Ocupación', occupationPercent],
+                    ['Estado Normativo', status]
+                ],
+                theme: 'grid',
+                headStyles: { fillColor: '#0f172a' }
+            });
+            yPos = doc.autoTable.previous.finalY + 15;
+        } else {
+            doc.setFontSize(10);
+            doc.setTextColor(150);
+            doc.text("No se han ingresado datos para esta sección.", 14, yPos);
+            yPos += 10;
+        }
     }
 
     // --- 3. Load Schedule ---
-    doc.setFontSize(14);
-    doc.setTextColor('#0f172a');
-    doc.text("3. Cuadro de Cargas", 14, yPos);
-    yPos += 8;
+    if (includeLoads) {
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        doc.setFontSize(14);
+        doc.setTextColor('#0f172a');
+        doc.text(`${sectionNum}. Cuadro de Cargas`, 14, yPos);
+        sectionNum++;
+        yPos += 8;
+        if (document.getElementById('load-table-body').rows.length > 0) {
+            const loadTableBody = document.getElementById('load-table-body');
+            doc.autoTable({
+                startY: yPos,
+                head: [['Circuito', 'Potencia (W)', 'Sección Cable', 'Protección', 'Diferencial']],
+                body: Array.from(loadTableBody.rows).map(row => [
+                    row.cells[0].innerText,
+                    row.cells[1].innerText,
+                    row.cells[2].innerText,
+                    row.cells[3].innerText,
+                    row.cells[4].innerText
+                ]),
+                foot: [
+                    [{ content: 'TOTAL INSTALADO:', colSpan: 3, styles: { halign: 'right', fontStyle: 'normal' } }, document.getElementById('l-total-power').innerText],
+                    [{ content: 'POTENCIA DEMANDADA:', colSpan: 3, styles: { halign: 'right' } }, document.getElementById('l-demanded-power').innerText]
+                ],
+                theme: 'grid',
+                headStyles: { fillColor: '#0f172a' },
+                footStyles: { fillColor: '#e2e8f0', textColor: '#0f172a', fontStyle: 'bold' }
+            });
+            yPos = doc.autoTable.previous.finalY + 5;
 
-    const loadTableBody = document.getElementById('load-table-body');
-    if (loadTableBody.rows.length > 0) {
-        doc.autoTable({
-            startY: yPos,
-            head: [['Circuito', 'Potencia (W)', 'Sección Cable', 'Protección']],
-            body: Array.from(loadTableBody.rows).map(row => [
-                row.cells[0].innerText,
-                row.cells[1].innerText,
-                row.cells[2].innerText,
-                row.cells[3].innerText
-            ]),
-            foot: [
-                [{ content: 'TOTAL INSTALADO:', colSpan: 3, styles: { halign: 'right', fontStyle: 'normal' } }, document.getElementById('l-total-power').innerText],
-                [{ content: 'POTENCIA DEMANDADA:', colSpan: 3, styles: { halign: 'right' } }, document.getElementById('l-demanded-power').innerText]
-            ],
-            theme: 'grid',
-            headStyles: { fillColor: '#0f172a' },
-            footStyles: { fillColor: '#e2e8f0', textColor: '#0f172a', fontStyle: 'bold' }
-        });
-    } else {
-        doc.setFontSize(10);
-        doc.setTextColor(150);
-        doc.text("No se han agregado circuitos al cuadro de cargas.", 14, yPos);
+            // Justificación Técnica
+            doc.setFontSize(9);
+            doc.setTextColor(80);
+            const justification = "Nota Técnica: El dimensionamiento de conductores y protecciones se ha realizado conforme al Pliego Técnico RIC N°03, asegurando la coordinación entre la capacidad de transporte de los conductores y la corriente nominal de las protecciones, así como la selectividad de las protecciones diferenciales.";
+            const splitText = doc.splitTextToSize(justification, 180);
+            doc.text(splitText, 14, yPos);
+            yPos += (splitText.length * 4) + 10;
+        } else {
+            doc.setFontSize(10);
+            doc.setTextColor(150);
+            doc.text("No se han ingresado datos para esta sección.", 14, yPos);
+            yPos += 10;
+        }
     }
+
+    // --- 4. Photovoltaic System ---
+    if (includePV) {
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        doc.setFontSize(14);
+        doc.setTextColor('#0f172a');
+        doc.text(`${sectionNum}. Sistema Fotovoltaico`, 14, yPos);
+        sectionNum++;
+        yPos += 8;
+        if (document.getElementById('pv-res-power').innerText !== '0 kWp') {
+            const pvPower = document.getElementById('pv-res-power').innerText;
+            const pvCable = document.getElementById('pv-res-cable').innerText;
+            const pvFuse = document.getElementById('pv-res-fuse').innerText;
+            const pvSpd = document.getElementById('pv-res-spd').innerText;
+            const pvVoltStatus = document.getElementById('pv-res-status-volt').innerText;
+            const pvCurrStatus = document.getElementById('pv-res-status-curr').innerText;
+
+            doc.autoTable({
+                startY: yPos,
+                head: [['Parámetro', 'Valor']],
+                body: [
+                    ['Potencia Total (Peak)', pvPower],
+                    ['Cable Solar Sugerido', pvCable],
+                    ['Fusible DC Sugerido', pvFuse],
+                    ['Descargador (SPD)', pvSpd],
+                    ['Estado Voltaje', pvVoltStatus.replace(/\n/g, ' ')],
+                    ['Estado Corriente', pvCurrStatus.replace(/\n/g, ' ')]
+                ],
+                theme: 'grid',
+                headStyles: { fillColor: '#0f172a' }
+            });
+            yPos = doc.autoTable.previous.finalY + 15;
+        } else {
+            doc.setFontSize(10);
+            doc.setTextColor(150);
+            doc.text("No se han ingresado datos para esta sección.", 14, yPos);
+            yPos += 10;
+        }
+    }
+
+    // --- 5. Grounding System ---
+    if (includeGrounding) {
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        doc.setFontSize(14);
+        doc.setTextColor('#0f172a');
+        doc.text(`${sectionNum}. Puesta a Tierra`, 14, yPos);
+        sectionNum++;
+        yPos += 8;
+        if (!document.getElementById('g-result-content').classList.contains('hidden')) {
+            const rValue = document.getElementById('res-grounding').innerText;
+            const rStatus = document.getElementById('g-res-status').innerText;
+            const resistivity = document.getElementById('g-resistivity').value;
+
+            doc.autoTable({
+                startY: yPos,
+                head: [['Parámetro', 'Valor']],
+                body: [
+                    ['Resistividad del Terreno', resistivity + ' Ω.m'],
+                    ['Resistencia Calculada', rValue],
+                    ['Estado Normativo', rStatus.replace(/\n/g, ' ')]
+                ],
+                theme: 'grid',
+                headStyles: { fillColor: '#0f172a' }
+            });
+            yPos = doc.autoTable.previous.finalY + 15;
+        } else {
+            doc.setFontSize(10);
+            doc.setTextColor(150);
+            doc.text("No se han ingresado datos para esta sección.", 14, yPos);
+            yPos += 10;
+        }
+    }
+
+    // --- Signature Section ---
+    const pageCount = doc.internal.getNumberOfPages();
+    doc.setPage(pageCount);
+    const pageHeight = doc.internal.pageSize.height;
+
+    // If the last content was too close to the bottom, add a new page for the signature
+    if (yPos > pageHeight - 50) { 
+        doc.addPage();
+        doc.setPage(doc.internal.getNumberOfPages());
+    }
+
+    let signatureY = pageHeight - 40; // 40 units from bottom
+    
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.5);
+    doc.line(70, signatureY, 140, signatureY); // Signature line
+    signatureY += 5;
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text(installerName || "__________________________", 105, signatureY, { align: "center" });
+    signatureY += 5;
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Instalador Eléctrico Autorizado (Licencia ${installerLicense})`, 105, signatureY, { align: "center" });
 
     // --- Save the PDF ---
     doc.save('Memoria_de_Calculo_SEC.pdf');
+}
+
+function exportLabelsPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    const rows = document.querySelectorAll('#load-table-body tr');
+    if (rows.length === 0) {
+        alert("No hay circuitos para generar etiquetas.");
+        return;
+    }
+
+    // Configuración de etiquetas (Grid 3 columnas en A4)
+    const startX = 10;
+    const startY = 20;
+    const labelWidth = 60;
+    const labelHeight = 30;
+    const gapX = 5;
+    const gapY = 5;
+    
+    let x = startX;
+    let y = startY;
+
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Etiquetas de Tablero - Calculadora Pro SEC", 105, 12, { align: "center" });
+
+    rows.forEach((row) => {
+        // Extraer datos de la fila
+        const name = row.cells[0].innerText;
+        const protection = row.cells[3].innerText;
+        const differential = row.cells[4].innerText;
+
+        // Dibujar borde etiqueta
+        doc.setDrawColor(100);
+        doc.setLineWidth(0.5);
+        doc.rect(x, y, labelWidth, labelHeight);
+
+        // Contenido
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.text(name, x + (labelWidth/2), y + 8, { align: "center", maxWidth: labelWidth - 4 });
+
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Disyuntor: ${protection}`, x + (labelWidth/2), y + 16, { align: "center" });
+        doc.text(`Diferencial: ${differential}`, x + (labelWidth/2), y + 22, { align: "center" });
+
+        // Mover cursor
+        x += labelWidth + gapX;
+
+        // Salto de línea (3 columnas)
+        if (x > (startX + (labelWidth + gapX) * 2)) {
+            x = startX;
+            y += labelHeight + gapY;
+        }
+
+        // Nueva página si se acaba el espacio
+        if (y + labelHeight > 280) {
+            doc.addPage();
+            y = startY;
+            x = startX;
+        }
+    });
+
+    doc.save('Etiquetas_Tablero.pdf');
+}
+
+// --- Tool: Sketch / Canvas Logic (Fabric.js) ---
+let canvas;
+
+function initSketchCanvas() {
+    if (canvas) return; // Already initialized
+
+    const container = document.getElementById('canvas-container');
+    // Create canvas with container dimensions
+    canvas = new fabric.Canvas('sketch-canvas', {
+        width: container.clientWidth,
+        height: container.clientHeight,
+        backgroundColor: '#ffffff', // White paper background
+        selection: true
+    });
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        const container = document.getElementById('canvas-container');
+        canvas.setDimensions({
+            width: container.clientWidth,
+            height: container.clientHeight
+        });
+    });
+
+    // Delete with Delete key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Delete' && !document.getElementById('tab-sketch').classList.contains('hidden')) {
+            deleteSelected();
+        }
+    });
+}
+
+function addSymbol(type) {
+    if (!canvas) return;
+
+    let group;
+    const center = canvas.getCenter();
+    const left = center.left;
+    const top = center.top;
+    const color = 'black';
+
+    if (type === 'light') {
+        // Symbol: Circle with X (Centro de Alumbrado)
+        const circle = new fabric.Circle({
+            radius: 15, fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const line1 = new fabric.Line([-10, -10, 10, 10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center' });
+        const line2 = new fabric.Line([-10, 10, 10, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center' });
+        
+        group = new fabric.Group([circle, line1, line2], { left: left, top: top });
+    } 
+    else if (type === 'socket') {
+        // Symbol: Semicircle with lines (Enchufe)
+        // Semicircle path
+        const arc = new fabric.Path('M -15 0 A 15 15 0 0 1 15 0', {
+            fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const line1 = new fabric.Line([0, 0, 0, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', top: -5 }); // Prong
+        // Base lines
+        const line2 = new fabric.Line([-15, 0, 15, 0], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center' });
+
+        group = new fabric.Group([arc, line1, line2], { left: left, top: top });
+    }
+    else if (type === 'switch') {
+        // Symbol: Small circle with arm (Interruptor 9/12)
+        const circle = new fabric.Circle({
+            radius: 5, fill: color, stroke: color, strokeWidth: 1, originX: 'center', originY: 'center', left: -10
+        });
+        const line = new fabric.Line([0, 0, 15, -15], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: 5, top: -5 });
+        
+        group = new fabric.Group([circle, line], { left: left, top: top });
+    }
+    else if (type === 'tda') {
+        // Symbol: Rectangle with diagonal (TDA)
+        const rect = new fabric.Rect({
+            width: 40, height: 25, fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const line = new fabric.Line([-20, -12.5, 20, 12.5], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center' });
+        const fillRect = new fabric.Rect({
+            width: 40, height: 25, fill: '#e2e8f0', opacity: 0.5, originX: 'center', originY: 'center'
+        });
+
+        group = new fabric.Group([fillRect, rect, line], { left: left, top: top });
+    }
+
+    if (group) {
+        canvas.add(group);
+        canvas.setActiveObject(group);
+        canvas.renderAll();
+    }
+}
+
+function uploadBackground(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            fabric.Image.fromURL(e.target.result, function (img) {
+                // Scale image to fit canvas if needed, or just set as background
+                // For simplicity, we scale to fit width
+                const scale = canvas.width / img.width;
+                
+                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                    scaleX: scale,
+                    scaleY: scale,
+                    originX: 'left',
+                    originY: 'top'
+                });
+            });
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function deleteSelected() {
+    if (!canvas) return;
+    const activeObjects = canvas.getActiveObjects();
+    if (activeObjects.length) {
+        canvas.discardActiveObject();
+        activeObjects.forEach(function(object) {
+            canvas.remove(object);
+        });
+    }
+}
+
+function downloadSketch() {
+    if (!canvas) return;
+    // Deselect everything to get a clean image
+    canvas.discardActiveObject();
+    canvas.renderAll();
+
+    const dataURL = canvas.toDataURL({
+        format: 'png',
+        quality: 1
+    });
+    const link = document.createElement('a');
+    link.download = 'plano_electrico.png';
+    link.href = dataURL;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 // --- State Persistence Logic ---
@@ -626,7 +1052,8 @@ function saveState() {
             name: row.cells[0].innerText,
             power: parseFloat(row.cells[1].innerText.replace(' W', '')),
             wireSection: parseFloat(row.cells[2].innerText.replace(' mm²', '')),
-            protection: row.cells[3].innerText
+            protection: row.cells[3].innerText,
+                differential: row.cells[4].innerText
         });
     });
 
@@ -724,21 +1151,29 @@ function loadState() {
         tbody.innerHTML = ''; // Clear existing rows
         totalWatts = 0;
         state.loads.forEach(load => {
+            // Usar valores seguros para evitar errores si el localStorage tiene datos corruptos (null/NaN)
+            const safeName = load.name || '';
+            const safePower = (typeof load.power === 'number' && !isNaN(load.power)) ? load.power : 0;
+            const safeWireSection = (typeof load.wireSection === 'number' && !isNaN(load.wireSection)) ? load.wireSection : 0;
+            const safeProtection = load.protection || '';
+            const safeDifferential = load.differential || 'General';
+
             const row = document.createElement('tr');
             row.className = "border-b hover:bg-slate-50 transition dark:border-slate-700 dark:hover:bg-slate-700/50";
             row.innerHTML = `
-                <td class="p-3 font-medium">${load.name}</td>
-                <td class="p-3">${load.power} W</td>
-                <td class="p-3">${load.wireSection.toFixed(1)} mm²</td>
-                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300">${load.protection}</span></td>
+                <td class="p-3 font-medium" contenteditable="true" onblur="saveState()">${safeName}</td>
+                <td class="p-3" contenteditable="true" onfocus="editFocus(this, ' W')" onblur="editBlur(this, ' W', true)">${safePower} W</td>
+                <td class="p-3" contenteditable="true" onfocus="editFocus(this, ' mm²')" onblur="editBlur(this, ' mm²')">${safeWireSection.toFixed(1)} mm²</td>
+                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300" contenteditable="true" onblur="saveState()">${safeProtection}</span></td>
+                <td class="p-3"><span class="bg-slate-200 px-2 py-1 rounded text-xs font-bold dark:bg-slate-700 dark:text-slate-300" contenteditable="true" onblur="saveState()">${safeDifferential}</span></td>
                 <td class="p-3 text-center">
-                    <button onclick="removeRow(this, ${load.power})" class="text-red-500 hover:text-red-700">
+                    <button onclick="removeRow(this)" class="text-red-500 hover:text-red-700">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </td>
             `;
             tbody.appendChild(row);
-            totalWatts += load.power;
+            totalWatts += safePower;
         });
         updateTotalDisplay();
     }

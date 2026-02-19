@@ -56,6 +56,9 @@
                 <button onclick="switchTab('loads')" id="btn-loads" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
                     <i class="fa-solid fa-table-list mr-2"></i>Cuadro de Cargas
                 </button>
+                <button onclick="switchTab('sketch')" id="btn-sketch" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
+                    <i class="fa-solid fa-pen-ruler mr-2"></i>Plano / Croquis
+                </button>
                 <button onclick="switchTab('grounding')" id="btn-grounding" class="tab-inactive py-4 px-2 focus:outline-none transition-colors hover:text-sec-blue dark:text-slate-400 dark:hover:text-sec-accent whitespace-nowrap">
                     <i class="fa-solid fa-earth-americas mr-2"></i>Puesta a Tierra
                 </button>
@@ -166,6 +169,11 @@
                         </div>
                     </div>
                 </div>
+                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <p class="text-xs text-center text-slate-500 dark:text-slate-400">
+                        <i class="fa-solid fa-book-open-reader mr-1"></i> <strong>Justificación Normativa:</strong> La sección del conductor se elige para soportar la corriente corregida (RIC N°04, Tabla 4.4) y luego se verifica que la caída de tensión no supere el 3% (RIC N°04, pto. 8.1.13).
+                    </p>
+                </div>
             </div>
         </section>
 
@@ -212,8 +220,13 @@
                         <div id="c-result-circle" class="w-32 h-32 rounded-full border-8 border-slate-200 flex items-center justify-center mb-4 transition-all duration-500 relative dark:border-slate-700">
                             <span id="c-result-percent" class="text-2xl font-bold text-slate-700 dark:text-slate-300">0%</span>
                         </div>
-                        <p id="c-result-text" class="font-medium text-slate-600 dark:text-slate-400">Máximo permitido: 40%</p>
+                        <p id="c-result-text" class="font-medium text-slate-600 dark:text-slate-400 h-5"></p>
                     </div>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <p class="text-xs text-center text-slate-500 dark:text-slate-400">
+                        <i class="fa-solid fa-book-open-reader mr-1"></i> <strong>Justificación Normativa:</strong> La ocupación máxima de un ducto por conductores de igual sección no debe superar el 40% de su área interna (RIC N°04, Tabla 4.10).
+                    </p>
                 </div>
             </div>
         </section>
@@ -289,6 +302,58 @@
                         </div>
                     </div>
                 </div>
+                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <p class="text-xs text-center text-slate-500 dark:text-slate-400">
+                        <i class="fa-solid fa-book-open-reader mr-1"></i> <strong>Justificación Normativa:</strong> Los cálculos aplican factores de seguridad para T° y radiación (Voc x 1.15, Isc x 1.25) según buenas prácticas de ingeniería y referencias del Pliego Técnico RIC N°09 para sistemas fotovoltaicos.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 2.8: Plano / Croquis (Fabric.js) -->
+        <section id="tab-sketch" class="hidden fade-in space-y-6">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <h2 class="text-lg font-bold text-sec-blue mb-4 border-b pb-2 dark:text-white dark:border-slate-600">Croquis de Instalación (RIC N°02)</h2>
+                
+                <!-- Toolbar -->
+                <div class="flex flex-wrap gap-2 mb-4 p-2 bg-slate-100 rounded-lg dark:bg-slate-900/50">
+                    <div class="flex gap-2">
+                        <button onclick="addSymbol('light')" class="p-2 bg-white border border-slate-300 rounded hover:bg-slate-50 text-slate-700 shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white" title="Centro de Alumbrado">
+                            <i class="fa-regular fa-lightbulb mr-1"></i> Luz
+                        </button>
+                        <button onclick="addSymbol('socket')" class="p-2 bg-white border border-slate-300 rounded hover:bg-slate-50 text-slate-700 shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white" title="Enchufe">
+                            <i class="fa-solid fa-plug mr-1"></i> Enchufe
+                        </button>
+                        <button onclick="addSymbol('switch')" class="p-2 bg-white border border-slate-300 rounded hover:bg-slate-50 text-slate-700 shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white" title="Interruptor">
+                            <i class="fa-solid fa-toggle-on mr-1"></i> Interruptor
+                        </button>
+                        <button onclick="addSymbol('tda')" class="p-2 bg-white border border-slate-300 rounded hover:bg-slate-50 text-slate-700 shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white" title="Tablero TDA">
+                            <i class="fa-solid fa-server mr-1"></i> TDA
+                        </button>
+                    </div>
+                    <div class="border-l border-slate-300 mx-2 dark:border-slate-600"></div>
+                    <div class="flex gap-2">
+                        <label class="p-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer shadow-sm flex items-center">
+                            <i class="fa-solid fa-upload mr-1"></i> Subir Plano
+                            <input type="file" id="bg-upload" accept="image/*" class="hidden" onchange="uploadBackground(this)">
+                        </label>
+                        <button onclick="deleteSelected()" class="p-2 bg-red-100 text-red-700 border border-red-200 rounded hover:bg-red-200 shadow-sm dark:bg-red-900/30 dark:text-red-300 dark:border-red-800" title="Borrar Seleccionado">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                        <button onclick="downloadSketch()" class="p-2 bg-green-100 text-green-700 border border-green-200 rounded hover:bg-green-200 shadow-sm dark:bg-green-900/30 dark:text-green-300 dark:border-green-800" title="Descargar Imagen">
+                            <i class="fa-solid fa-download"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Canvas Container -->
+                <div id="canvas-container" class="border border-slate-300 rounded overflow-hidden bg-white shadow-inner relative w-full h-[600px]">
+                     <canvas id="sketch-canvas"></canvas>
+                </div>
+                
+                <div class="mt-4 text-xs text-slate-500 dark:text-slate-400">
+                    <p><i class="fa-solid fa-circle-info"></i> <strong>Instrucciones:</strong> Suba una imagen del plano de la casa. Haga clic en los botones para agregar símbolos. Arrastre los símbolos para ubicarlos. Seleccione un objeto y presione el botón de basura para eliminar.</p>
+                </div>
             </div>
         </section>
 
@@ -303,11 +368,23 @@
                 <!-- Add Row Form -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6 bg-slate-50 p-4 rounded-lg items-start dark:bg-slate-900/50">
                     <div class="lg:col-span-1">
-                        <input type="text" id="l-name" placeholder="Nombre Circuito (Ej: C1 Alumbrado)" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400">
+                        <select id="l-name" oninput="updateCircuitSuggestions()" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                            <option value="" disabled selected>-- Seleccione Circuito --</option>
+                            <option value="C1 - Alumbrado Interior">C1 - Alumbrado Interior</option>
+                            <option value="C2 - Enchufes Dormitorios">C2 - Enchufes Dormitorios</option>
+                            <option value="C3 - Enchufes Living/Comedor">C3 - Enchufes Living/Comedor</option>
+                            <option value="C4 - Enchufes Cocina">C4 - Enchufes Cocina</option>
+                            <option value="C5 - Enchufes Logia">C5 - Enchufes Logia</option>
+                            <option value="C6 - Enchufes Baños">C6 - Enchufes Baños</option>
+                            <option value="C7 - Enchufe Escritorio/PC">C7 - Enchufe Escritorio/PC</option>
+                            <option value="C8 - Alumbrado Exterior">C8 - Alumbrado Exterior</option>
+                            <option value="C9 - Bomba/Riego">C9 - Bomba/Riego</option>
+                            <option value="C10 - Portón Eléctrico">C10 - Portón Eléctrico</option>
+                        </select>
                         <p id="l-name-error" class="text-red-500 text-xs mt-1 hidden"></p>
                     </div>
                     <div class="lg:col-span-1">
-                        <input type="number" id="l-power" oninput="suggestProtection()" placeholder="Potencia (W)" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400">
+                        <input type="number" id="l-power" oninput="updateCircuitSuggestions()" placeholder="Potencia (W)" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-slate-400">
                         <p id="l-power-error" class="text-red-500 text-xs mt-1 hidden"></p>
                     </div>
                     <div class="lg:col-span-1">
@@ -323,6 +400,13 @@
                         <input type="text" id="l-protection" placeholder="Protección Sugerida" readonly class="p-2 border rounded w-full bg-slate-100 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400 cursor-not-allowed">
                         <p id="l-protection-error" class="text-red-500 text-xs mt-1 hidden"></p>
                     </div>
+                    <div class="lg:col-span-1">
+                        <select id="l-differential" class="p-2 border rounded w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                            <option value="General">General (30mA)</option>
+                            <option value="Tipo A">Tipo A (Super Inmunizado)</option>
+                        </select>
+                        <p id="l-differential-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                    </div>
                     <button onclick="addLoadRow()" class="bg-sec-accent hover:bg-sky-600 text-white font-bold py-2 px-4 rounded transition w-full lg:col-span-1">
                         <i class="fa-solid fa-plus mr-1"></i> Agregar
                     </button>
@@ -337,6 +421,7 @@
                                 <th class="p-3">Potencia (W)</th>
                                 <th class="p-3">Sección Cable</th>
                                 <th class="p-3">Protección</th>
+                                <th class="p-3">Diferencial</th>
                                 <th class="p-3 rounded-tr-lg text-center">Acción</th>
                             </tr>
                         </thead>
@@ -354,7 +439,7 @@
                                 <td class="p-3 text-sec-blue text-lg dark:text-sec-accent" id="l-demanded-power">0 W</td>
                                 <td colspan="3" class="p-3">
                                     <div class="flex flex-col sm:flex-row items-center justify-end gap-2">
-                                        <span class="text-xs font-normal text-slate-500">(Factor de Demanda Aplicado)</span>
+                                        <span class="text-xs font-normal text-slate-500 text-right">Factor de Demanda según RIC N°03 (5.4.2.2):<br>100% de los primeros 3kW + 70% del resto.</span>
                                         <button onclick="useDemandedPowerForFeeder()" title="Usar esta potencia en la calculadora de alimentadores" class="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1 px-3 rounded transition flex items-center gap-2 w-full sm:w-auto">
                                         <i class="fa-solid fa-arrow-right-to-bracket"></i> Usar
                                     </button>
@@ -406,6 +491,11 @@
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <p class="text-xs text-center text-slate-500 dark:text-slate-400">
+                        <i class="fa-solid fa-book-open-reader mr-1"></i> <strong>Justificación Normativa:</strong> La resistencia de puesta a tierra para instalaciones de consumo en baja tensión debe ser igual o inferior a 20 Ω (RIC N°06, pto. 5.2.3).
+                    </p>
                 </div>
             </div>
         </section>
@@ -490,15 +580,75 @@
     <footer class="bg-white border-t mt-auto py-6 dark:bg-slate-800 dark:border-slate-700">
         <div class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
             <p class="text-sm text-slate-500 dark:text-slate-400">© 2024 Calculadora Pro SEC - Desarrollado para cumplimiento RIC.</p>
-            <button onclick="exportPDF()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded shadow-lg flex items-center gap-2 transition transform hover:scale-105">
-                <i class="fa-solid fa-file-pdf"></i>
-                Generar Memoria de Cálculo
-            </button>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <button onclick="exportLabelsPDF()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded shadow-lg flex items-center gap-2 transition transform hover:scale-105">
+                    <i class="fa-solid fa-tags"></i>
+                    Etiquetas
+                </button>
+                <button onclick="openReportModal()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded shadow-lg flex items-center gap-2 transition transform hover:scale-105">
+                    <i class="fa-solid fa-file-pdf"></i>
+                    Generar Memoria
+                </button>
+            </div>
         </div>
     </footer>
 
+    <!-- Report Configuration Modal -->
+    <div id="report-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 flex fade-in">
+        <div class="bg-white rounded-xl p-6 w-96 dark:bg-slate-800 border border-slate-700 shadow-2xl transform transition-all scale-100">
+            <h3 class="text-lg font-bold mb-4 text-slate-800 dark:text-white border-b pb-2 dark:border-slate-600">Configurar Informe</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400 mb-4">Seleccione los ítems a incluir en la memoria técnica:</p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nombre del Instalador</label>
+                <input type="text" id="installer-name" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white" placeholder="Ej: Juan Pérez">
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Licencia de Instalador SEC</label>
+                <select id="installer-license" class="w-full p-2 border rounded focus:ring-2 focus:ring-sec-accent outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                    <option value="Clase A">Clase A</option>
+                    <option value="Clase B">Clase B</option>
+                    <option value="Clase C">Clase C</option>
+                    <option value="Clase D">Clase D</option>
+                </select>
+            </div>
+
+            <div class="space-y-3 mb-6">
+                <label class="flex items-center space-x-3 cursor-pointer p-2 hover:bg-slate-50 rounded dark:hover:bg-slate-700/50">
+                    <input type="checkbox" id="chk-feeder" checked class="w-5 h-5 rounded text-sec-blue focus:ring-sec-accent border-gray-300">
+                    <span class="text-slate-700 dark:text-slate-300 font-medium">1. Alimentadores</span>
+                </label>
+                <label class="flex items-center space-x-3 cursor-pointer p-2 hover:bg-slate-50 rounded dark:hover:bg-slate-700/50">
+                    <input type="checkbox" id="chk-conduit" checked class="w-5 h-5 rounded text-sec-blue focus:ring-sec-accent border-gray-300">
+                    <span class="text-slate-700 dark:text-slate-300 font-medium">2. Ocupación de Ductos</span>
+                </label>
+                <label class="flex items-center space-x-3 cursor-pointer p-2 hover:bg-slate-50 rounded dark:hover:bg-slate-700/50">
+                    <input type="checkbox" id="chk-loads" checked class="w-5 h-5 rounded text-sec-blue focus:ring-sec-accent border-gray-300">
+                    <span class="text-slate-700 dark:text-slate-300 font-medium">3. Cuadro de Cargas</span>
+                </label>
+                <label class="flex items-center space-x-3 cursor-pointer p-2 hover:bg-slate-50 rounded dark:hover:bg-slate-700/50">
+                    <input type="checkbox" id="chk-photovoltaic" checked class="w-5 h-5 rounded text-sec-blue focus:ring-sec-accent border-gray-300">
+                    <span class="text-slate-700 dark:text-slate-300 font-medium">4. Sistema Fotovoltaico</span>
+                </label>
+                <label class="flex items-center space-x-3 cursor-pointer p-2 hover:bg-slate-50 rounded dark:hover:bg-slate-700/50">
+                    <input type="checkbox" id="chk-grounding" checked class="w-5 h-5 rounded text-sec-blue focus:ring-sec-accent border-gray-300">
+                    <span class="text-slate-700 dark:text-slate-300 font-medium">5. Puesta a Tierra</span>
+                </label>
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="closeReportModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg dark:text-slate-300 dark:hover:bg-slate-700 transition font-medium">Cancelar</button>
+                <button onclick="exportPDF()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold shadow transition flex items-center gap-2">
+                    <i class="fa-solid fa-file-pdf"></i> Descargar
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <script src="scripts.js"></script>
 </body>
 </html>
