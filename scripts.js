@@ -436,15 +436,20 @@ function addLoadRow() {
     let isSafe = true;
     if (isValid && protection && wireSection) {
         const breakerRating = parseFloat(protection.split('x')[1]);
+        const maxPowerForBreaker = breakerRating * 220;
         let errorMessage = '';
 
-        // Regla específica para circuitos de alumbrado (1.5mm²) según RIC
-        if (wireSection === 1.5 && breakerRating > 10) {
+        // Nueva validación: Potencia vs Capacidad del Disyuntor
+        if (power > maxPowerForBreaker) {
+            errorMessage = `Potencia de ${power}W excede el máximo de ${maxPowerForBreaker}W para un disyuntor de ${breakerRating}A.`;
+            displayError('l-power', `¡Riesgo! ${errorMessage}`);
+            isSafe = false;
+        }
+        // Validación de coordinación entre conductor y protección
+        else if (wireSection === 1.5 && breakerRating > 10) {
             errorMessage = `Para 1.5mm² (alumbrado), la protección no debe superar 10A.`;
-        // Regla específica para circuitos de enchufes (2.5mm²) según RIC
         } else if (wireSection === 2.5 && breakerRating > 16) {
             errorMessage = `Para 2.5mm² (enchufes), la protección no debe superar 16A.`;
-        // Validación general para otras secciones (basada en ampacidad de tabla)
         } else {
             const wireInfo = wireData.find(w => w.section === wireSection);
             const maxWireAmps = wireInfo ? wireInfo.amp : 0;
@@ -453,7 +458,7 @@ function addLoadRow() {
             }
         }
 
-        if (errorMessage) {
+        if (errorMessage && isSafe) {
             displayError('l-protection', `¡Riesgo! ${errorMessage}`);
             isSafe = false;
         }
@@ -903,38 +908,243 @@ function exportLabelsPDF() {
 
 // --- Tool: Sketch / Canvas Logic (Fabric.js) ---
 let canvas;
+let currentDrawingMode = null; // To track wall vs connection drawing
+let canvasHistory = [];
+let isUndoing = false;
+let savedCanvasJSON = null; // Temp store for loading canvas state
 
 function initSketchCanvas() {
     if (canvas) return; // Already initialized
 
     const container = document.getElementById('canvas-container');
     // Create canvas with container dimensions
-    canvas = new fabric.Canvas('sketch-canvas', {
-        width: container.clientWidth,
-        height: container.clientHeight,
-        backgroundColor: '#ffffff', // White paper background
-        selection: true
+    if (container) {
+        canvas = new fabric.Canvas('sketch-canvas', {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            backgroundColor: '#ffffff', // White paper background
+            selection: true
+        });
+    }
+    
+    // Load canvas from state if it was loaded into our temp variable
+    if (savedCanvasJSON) {
+        canvas.loadFromJSON(savedCanvasJSON, canvas.renderAll.bind(canvas));
+        savedCanvasJSON = null; // Clear it after use
+    }
+
+    // Initialize History
+    saveHistory();
+    
+    // Save history and persist state on canvas changes
+    const handleCanvasChange = () => {
+        if (!isUndoing) { saveHistory(); saveState(); }
+    };
+    canvas.on('object:added', handleCanvasChange);
+    canvas.on('object:modified', handleCanvasChange);
+    canvas.on('object:removed', handleCanvasChange);
+
+    // Disable scaling controls for multi-selections to prevent accidental resizing.
+    canvas.on('selection:created', function (opt) {
+        if (opt.target.type === 'activeSelection') {
+            opt.target.hasControls = false;
+        }
     });
 
     // Handle resize
     window.addEventListener('resize', () => {
         const container = document.getElementById('canvas-container');
-        canvas.setDimensions({
-            width: container.clientWidth,
-            height: container.clientHeight
-        });
-    });
-
-    // Delete with Delete key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Delete' && !document.getElementById('tab-sketch').classList.contains('hidden')) {
-            deleteSelected();
+        if (container && canvas) {
+            canvas.setDimensions({
+                width: container.clientWidth,
+                height: container.clientHeight
+            });
         }
     });
+
+    // Keyboard Shortcuts (Delete & Ctrl+Z)
+    document.addEventListener('keydown', (e) => {
+        const sketchTab = document.getElementById('tab-sketch');
+        if (sketchTab && !sketchTab.classList.contains('hidden')) {
+            if (e.key === 'Delete') {
+                deleteSelected();
+            }
+            // Ctrl+Z for Undo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                undoLastAction();
+            }
+        }
+    });
+
+    // Ensure free-drawn lines also don't have resize controls
+    canvas.on('path:created', function(e) {
+        e.path.set({ hasControls: false, padding: 5 });
+    });
+}
+
+function saveHistory() {
+    if (!canvas) return;
+    // Limit history to last 10 states to save memory
+    if (canvasHistory.length > 10) canvasHistory.shift();
+    canvasHistory.push(JSON.stringify(canvas));
+}
+
+function undoLastAction() {
+    if (!canvas || canvasHistory.length < 2) return;
+    
+    isUndoing = true;
+    canvasHistory.pop(); // Remove current state
+    const prevState = canvasHistory[canvasHistory.length - 1];
+    
+    canvas.loadFromJSON(prevState, () => {
+        canvas.renderAll();
+        isUndoing = false;
+        // After undoing, the new state must be saved to localStorage
+        saveState();
+    });
+}
+
+function updateConnectionColor() {
+    const colorPicker = document.getElementById('connection-color-picker');
+    if (canvas && canvas.isDrawingMode && currentDrawingMode === 'connection') {
+        canvas.freeDrawingBrush.color = colorPicker.value;
+    }
+    // Save the color preference whenever it's changed
+    saveState();
+}
+
+function toggleDrawingMode(mode) {
+    if (!canvas) return;
+
+    const connBtn = document.getElementById('btn-draw-connection');
+
+    // If the clicked mode is already active, turn it off.
+    if (currentDrawingMode === mode) {
+        canvas.isDrawingMode = false;
+        currentDrawingMode = null;
+        if (connBtn) connBtn.classList.remove('bg-sec-accent', 'text-white');
+        return;
+    }
+
+    // Activate the new mode
+    canvas.isDrawingMode = true;
+    currentDrawingMode = mode;
+
+    if (mode === 'connection') {
+        const colorPicker = document.getElementById('connection-color-picker');
+        canvas.freeDrawingBrush.color = colorPicker.value;
+        canvas.freeDrawingBrush.width = 2;
+        canvas.freeDrawingBrush.strokeDashArray = [5, 5]; // Dashed line
+        if (connBtn) connBtn.classList.add('bg-sec-accent', 'text-white');
+    }
+}
+
+function addArchitecturalSymbol(type) {
+    if (!canvas) return;
+
+    // Deactivate drawing mode if active
+    if (canvas.isDrawingMode) {
+        toggleDrawingMode(currentDrawingMode); // This will turn it off
+    }
+
+    let group;
+    const center = canvas.getCenter();
+    const left = center.left;
+    const top = center.top;
+    const color = '#334155'; // slate-700
+
+    if (type === 'door') {
+        const openingHeight = 40;
+        const doorSwingWidth = 35;
+
+        // This rectangle will act as a mask to hide the wall of the room underneath.
+        const wallMask = new fabric.Rect({
+            width: 8, // A bit wider than the wall stroke (5)
+            height: openingHeight,
+            fill: 'white', // The background color of the canvas
+            originX: 'center',
+            originY: 'center'
+        });
+
+        // The door swing path, for a door hinged on the left, opening inwards.
+        const doorPath = new fabric.Path(`M 0,${-openingHeight/2} A ${doorSwingWidth} ${doorSwingWidth} 0 0 1 ${doorSwingWidth}, ${openingHeight/2}`, {
+            fill: 'transparent',
+            stroke: color,
+            strokeWidth: 2,
+            objectCaching: false
+        });
+        group = new fabric.Group([wallMask, doorPath], { left: left, top: top, originX: 'center', originY: 'center' });
+    }
+    else if (type === 'window') {
+        const frame = new fabric.Rect({
+            width: 60, height: 15, fill: 'white', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const glass = new fabric.Line([-30, 0, 30, 0], { stroke: color, strokeWidth: 1, originX: 'center', originY: 'center' });
+        group = new fabric.Group([frame, glass], { left: left, top: top });
+    }
+
+    if (group) {
+        group.set({ hasControls: false, padding: 5 }); // Disable resize handles
+        canvas.add(group);
+        canvas.setActiveObject(group);
+        canvas.renderAll();
+    }
+}
+
+function addText() {
+    if (!canvas) return;
+    if (canvas.isDrawingMode) { toggleDrawingMode(currentDrawingMode); } // Deactivate drawing if active
+
+    const text = new fabric.IText('Texto', {
+        left: canvas.getCenter().left,
+        top: canvas.getCenter().top,
+        fontFamily: 'sans-serif',
+        fontSize: 20,
+        fill: '#334155', // slate-700
+        originX: 'center',
+        originY: 'center',
+        hasControls: false,
+        padding: 5
+    });
+
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
+}
+
+function addRoom() {
+    if (!canvas) return;
+    if (canvas.isDrawingMode) { toggleDrawingMode(currentDrawingMode); } // Deactivate drawing if active
+
+    const room = new fabric.Rect({
+        left: canvas.getCenter().left - 100,
+        top: canvas.getCenter().top - 75,
+        width: 200,
+        height: 150,
+        fill: 'transparent',
+        stroke: '#334155', // slate-700
+        strokeWidth: 5,
+        strokeUniform: true, // Keeps stroke width constant on scaling
+        objectCaching: false,
+    });
+
+    if (room) {
+        room.set({ hasControls: true, padding: 5, lockRotation: true }); // Enable resize handles
+        room.setControlsVisibility({ mtr: false }); // Hide rotation handle
+        canvas.add(room);
+        canvas.setActiveObject(room);
+        canvas.renderAll();
+    }
 }
 
 function addSymbol(type) {
     if (!canvas) return;
+
+    // Deactivate drawing mode if active
+    if (canvas.isDrawingMode) {
+        toggleDrawingMode(currentDrawingMode); // This will turn it off
+    }
 
     let group;
     const center = canvas.getCenter();
@@ -952,26 +1162,111 @@ function addSymbol(type) {
         
         group = new fabric.Group([circle, line1, line2], { left: left, top: top });
     } 
+    else if (type === 'junction') {
+        // Symbol: Caja de Derivación (Square)
+        const rect = new fabric.Rect({
+            width: 15, height: 15, fill: 'white', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        group = new fabric.Group([rect], { left: left, top: top });
+    }
     else if (type === 'socket') {
         // Symbol: Semicircle with lines (Enchufe)
-        // Semicircle path
         const arc = new fabric.Path('M -15 0 A 15 15 0 0 1 15 0', {
             fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
         });
         const line1 = new fabric.Line([0, 0, 0, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', top: -5 }); // Prong
-        // Base lines
         const line2 = new fabric.Line([-15, 0, 15, 0], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center' });
 
         group = new fabric.Group([arc, line1, line2], { left: left, top: top });
     }
-    else if (type === 'switch') {
-        // Symbol: Small circle with arm (Interruptor 9/12)
-        const circle = new fabric.Circle({
-            radius: 5, fill: color, stroke: color, strokeWidth: 1, originX: 'center', originY: 'center', left: -10
+    else if (type === 'socket-double') {
+        // Symbol: Double socket (single semicircle with two prongs), as per NCh Elec 2/84
+        const arc = new fabric.Path('M -20 0 A 20 20 0 0 1 20 0', {
+            fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
         });
-        const line = new fabric.Line([0, 0, 15, -15], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: 5, top: -5 });
+        const lineBase = new fabric.Line([-20, 0, 20, 0], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center' });
+        const prong1 = new fabric.Line([-7, 0, -7, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', top: -5 });
+        const prong2 = new fabric.Line([7, 0, 7, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', top: -5 });
+
+        group = new fabric.Group([arc, lineBase, prong1, prong2], { left: left, top: top, originX: 'center', originY: 'center' });
+    }
+    else if (type === 'socket-triple') {
+        // Symbol: Triple socket (single semicircle with three prongs)
+        const arc = new fabric.Path('M -25 0 A 25 25 0 0 1 25 0', {
+            fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const lineBase = new fabric.Line([-25, 0, 25, 0], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center' });
+        const prong1 = new fabric.Line([-12, 0, -12, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', top: -5 });
+        const prong2 = new fabric.Line([0, 0, 0, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', top: -5 });
+        const prong3 = new fabric.Line([12, 0, 12, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', top: -5 });
+
+        group = new fabric.Group([arc, lineBase, prong1, prong2, prong3], { left: left, top: top, originX: 'center', originY: 'center' });
+    }
+    else if (type === 'switch') {
+        // Symbol: Interruptor 9/12 (Simple) - NCh Elec 2/84
+        const circle = new fabric.Circle({
+            radius: 6, fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const line = new fabric.Line([0, 0, 10, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: 5, top: -5 });
         
         group = new fabric.Group([circle, line], { left: left, top: top });
+    }
+    else if (type === 'switch-double') {
+        // Symbol: Interruptor 9/15 (Doble) - NCh Elec 2/84
+        const circle = new fabric.Circle({
+            radius: 6, fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const line1 = new fabric.Line([0, 0, 10, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: 2, top: -8 });
+        const line2 = new fabric.Line([0, 0, 10, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: 8, top: -2 });
+        
+        group = new fabric.Group([circle, line1, line2], { left: left, top: top });
+    }
+    else if (type === 'switch-triple') {
+        // Symbol: Interruptor 9/24 (Triple) - NCh Elec 2/84
+        const circle = new fabric.Circle({
+            radius: 6, fill: 'transparent', stroke: color, strokeWidth: 2, originX: 'center', originY: 'center'
+        });
+        const line1 = new fabric.Line([0, 0, 10, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: -1, top: -11 });
+        const line2 = new fabric.Line([0, 0, 10, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: 5, top: -5 });
+        const line3 = new fabric.Line([0, 0, 10, -10], { stroke: color, strokeWidth: 2, originX: 'center', originY: 'center', left: 11, top: 1 });
+        
+        group = new fabric.Group([circle, line1, line2, line3], { left: left, top: top });
+    }
+    else if (type === 'switch-stair') {
+        // Symbol: Interruptor 9/32 (Escalera) - Circle with a triangle
+        const circle = new fabric.Circle({
+            radius: 6, 
+            fill: 'transparent', 
+            stroke: color, 
+            strokeWidth: 2, 
+            originX: 'center', 
+            originY: 'center'
+        });
+        const triangle = new fabric.Triangle({
+            width: 6, height: 6, fill: color, stroke: color,
+            originX: 'center', originY: 'center', top: 1 // slight offset
+        });
+        
+        group = new fabric.Group([circle, triangle], { left: left, top: top });
+    }
+    else if (type === 'meter') {
+        // Symbol: Medidor (Empalme) - Circle with an 'M'
+        const circle = new fabric.Circle({
+            radius: 15,
+            fill: 'transparent',
+            stroke: color,
+            strokeWidth: 2,
+            originX: 'center',
+            originY: 'center'
+        });
+        const textM = new fabric.IText('M', {
+            fontFamily: 'sans-serif',
+            fontSize: 20,
+            fill: color,
+            originX: 'center',
+            originY: 'center'
+        });
+        group = new fabric.Group([circle, textM], { left: left, top: top });
     }
     else if (type === 'tda') {
         // Symbol: Rectangle with diagonal (TDA)
@@ -987,11 +1282,41 @@ function addSymbol(type) {
     }
 
     if (group) {
+        group.set({ hasControls: false, padding: 5 }); // Disable resize handles
         canvas.add(group);
         canvas.setActiveObject(group);
         canvas.renderAll();
     }
 }
+
+function toggleDropdown(id) {
+    const dropdown = document.getElementById(id);
+    if (!dropdown) return;
+    
+    // Close all other dropdowns
+    document.querySelectorAll('.dropdown-menu').forEach(menu => {
+        if (menu.id !== id) menu.classList.add('hidden');
+    });
+
+    dropdown.classList.toggle('hidden');
+}
+
+// Close dropdowns and exit sketch drawing mode when clicking outside
+window.addEventListener('click', (e) => {
+    // Close dropdowns
+    if (!e.target.closest('.dropdown-container')) {
+        document.querySelectorAll('.dropdown-menu').forEach(menu => {
+            menu.classList.add('hidden');
+        });
+    }
+
+    // Exit drawing mode if clicking outside the canvas area and its toolbar
+    if (canvas && canvas.isDrawingMode) {
+        if (!e.target.closest('#canvas-container') && !e.target.closest('#sketch-toolbar')) {
+            toggleDrawingMode(currentDrawingMode);
+        }
+    }
+});
 
 function uploadBackground(input) {
     if (input.files && input.files[0]) {
@@ -1002,7 +1327,10 @@ function uploadBackground(input) {
                 // For simplicity, we scale to fit width
                 const scale = canvas.width / img.width;
                 
-                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                canvas.setBackgroundImage(img, () => {
+                    canvas.renderAll();
+                    if (!isUndoing) { saveHistory(); saveState(); }
+                }, {
                     scaleX: scale,
                     scaleY: scale,
                     originX: 'left',
@@ -1022,6 +1350,27 @@ function deleteSelected() {
         activeObjects.forEach(function(object) {
             canvas.remove(object);
         });
+    }
+}
+
+function rotateSelected(angle) {
+    if (!canvas) return;
+    const activeObj = canvas.getActiveObject();
+    if (activeObj) {
+        // Rotate relative to current angle
+        activeObj.rotate((activeObj.angle || 0) + angle);
+        canvas.requestRenderAll();
+    }
+}
+
+function scaleSelected(factor) {
+    if (!canvas) return;
+    const activeObj = canvas.getActiveObject();
+    if (activeObj) {
+        activeObj.scaleX = (activeObj.scaleX || 1) * factor;
+        activeObj.scaleY = (activeObj.scaleY || 1) * factor;
+        activeObj.setCoords(); // Update hit box
+        canvas.requestRenderAll();
     }
 }
 
@@ -1090,7 +1439,11 @@ function saveState() {
             length: document.getElementById('g-length').value,
             diameter: document.getElementById('g-diameter').value,
         },
-        loads: loads
+        loads: loads,
+        sketch: {
+            connectionColor: document.getElementById('connection-color-picker')?.value,
+            canvasJSON: canvas ? JSON.stringify(canvas) : null
+        }
     };
 
     localStorage.setItem('calculatorState', JSON.stringify(state));
@@ -1145,6 +1498,18 @@ function loadState() {
         if (state.grounding.resistivity) calculateGrounding();
     }
     
+    // Load Sketch settings
+    if (state.sketch) {
+        const colorPicker = document.getElementById('connection-color-picker');
+        if (colorPicker && state.sketch.connectionColor) {
+            colorPicker.value = state.sketch.connectionColor;
+        }
+        // Store canvas JSON to be loaded when the canvas is initialized
+        if (state.sketch.canvasJSON) {
+            savedCanvasJSON = state.sketch.canvasJSON;
+        }
+    }
+
     // Load Loads
     if (state.loads && Array.isArray(state.loads)) {
         const tbody = document.getElementById('load-table-body');
